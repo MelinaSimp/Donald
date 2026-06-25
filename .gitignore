@@ -1,0 +1,29 @@
+# Secrets — never commit
+.env
+*.env
+secrets.*
+
+# Wren runtime state (local; human-readable but per-machine)
+data/memory.json
+data/reminders.json
+data/heartbeat_state.json
+data/inbox.json
+data/audit.log
+data/notes/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Audio scratch
+*.wav
+*.mp3
+!tests/fixtures/*.wav
+
+# OS
+.DS_Store

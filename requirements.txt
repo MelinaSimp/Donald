@@ -1,0 +1,10 @@
+# Brain (Tiers 1-2, 4-6) — the only hard dependencies to get text working.
+anthropic>=0.40.0
+ruamel.yaml>=0.18          # comment-preserving config round-trips
+
+# Web lookups tool (Tier 2). Light, stdlib-friendly HTTP.
+httpx>=0.27.0
+
+# Voice (Tier 3) — optional. Install when you add push-to-talk.
+#   pip install -r requirements-voice.txt
+# Kept out of the core install so the text brain has no audio dependencies.

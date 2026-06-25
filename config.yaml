@@ -1,0 +1,80 @@
+# Wren configuration. Edit knobs here, not in code (Tier 6 principle).
+# Anything you'd tune — model, thresholds, intervals, quiet hours, what needs
+# confirmation — lives in this file so changing behaviour is a one-line edit.
+# Comments survive programmatic edits (the kill switch / change_settings only
+# flip the one value they touch).
+
+assistant:
+  name: Wren
+  # Text personality. The spoken voice/character comes from ElevenLabs (Tier 3).
+  persona: >-
+    You are Wren, a warm, plain-spoken, and brief personal assistant for one
+    person. Answer directly and skip preamble — no "Here is..." or "Based
+    on...". When you use a tool, weave the result into a natural reply. If you
+    are unsure, say so plainly. You have your owner's back.
+
+brain:
+  # Default model. Swap to claude-sonnet-4-6 or claude-haiku-4-5 for lower voice
+  # latency — one line, no code change.
+  model: claude-opus-4-8
+  max_tokens: 1024
+  # Thinking adds latency. For a snappy voice assistant we leave it off by
+  # default and lean on the persona for brevity. Set to "adaptive" if you want
+  # Wren to reason more on hard questions (slower first token).
+  # Quoted so YAML doesn't read bare off/on as booleans.
+  thinking: "off"          # "off" | "adaptive"
+  effort: medium           # low | medium | high  (only applied when thinking is on)
+  # Hard ceiling on tool-call rounds per turn, so a confused model can't loop.
+  max_tool_rounds: 8
+
+voice:
+  # Tier 3. Picked in the interview / here, never hardcoded.
+  elevenlabs_voice_id: ""          # set to your chosen ElevenLabs voice id
+  elevenlabs_model: eleven_turbo_v2_5
+  deepgram_model: nova-2
+  # Show the transcript of what Wren *heard* next to its reply while building.
+  show_transcript: true
+  push_to_talk_key: space          # hold to talk
+
+memory:
+  # Long-term store (Tier 4). Plain JSON you can open and edit by hand.
+  path: data/memory.json
+
+reminders:
+  path: data/reminders.json
+
+notes:
+  # Q&A-over-notes source (Tier 2). Drop .md/.txt files in here.
+  path: data/notes
+
+heartbeat:
+  # Tier 5. Quiet by default — it earns interruptions.
+  enabled: true
+  tick_seconds: 60                 # how often the loop wakes up
+  state_path: data/heartbeat_state.json
+  inbox_path: data/inbox.json      # held notices you catch up on when you return
+  quiet_hours:                     # only "loud" (interrupting) notices wait for these
+    start: "22:00"
+    end: "08:00"
+  # Each check: how often, and how noteworthy ("calm" -> log only, "loud" -> may interrupt).
+  checks:
+  - name: due_reminders
+    every_seconds: 60
+    level: loud                    # a reminder coming due is worth surfacing
+  - name: heartbeat_pulse
+    every_seconds: 3600
+    level: calm                    # proof-of-life into the calm log only
+
+safety:
+  # Tier 6. The "never without asking" list from the interview. Any tool whose
+  # name is here stops for explicit confirmation before it runs — for typed,
+  # spoken, AND heartbeat-initiated calls alike.
+  confirm_tools:
+  - send_message
+  - spend_money
+  - delete_data
+  - change_settings
+  audit_log: data/audit.log
+  # Kill switch: when true, all proactive/background behaviour is paused. You can
+  # still talk to Wren. Toggle with `python -m wren.cli kill` / `unkill`.
+  paused: false
