@@ -6,6 +6,7 @@ isolation, confirmation gates, handoffs, hot-reload) build on this backbone.
 """
 
 from .agent import Agent, AgentManifest, AgentResult
+from .events import EventEmitter, Observer
 from .llm import LLM, DEFAULT_MODEL
 from .orchestrator import Orchestrator, RoutingDecision, RouteStep
 from .registry import Tool, ToolRegistry, ToolView
@@ -15,6 +16,8 @@ __all__ = [
     "Agent",
     "AgentManifest",
     "AgentResult",
+    "EventEmitter",
+    "Observer",
     "LLM",
     "DEFAULT_MODEL",
     "Orchestrator",

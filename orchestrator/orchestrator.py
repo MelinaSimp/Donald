@@ -19,11 +19,15 @@ the conductor's routing policy, which it builds from the agent roster.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 
 from .agent import Agent, AgentManifest, AgentResult
+from .events import EventEmitter, Observer
 from .llm import LLM, DEFAULT_MODEL
 from .registry import ToolRegistry
+
+logger = logging.getLogger(__name__)
 
 # The router is constrained to this shape so the conductor reads a decision,
 # never free-form prose. `question` is "" unless kind == "clarify".
@@ -74,6 +78,7 @@ class Orchestrator:
         llm: LLM | None = None,
         model: str = DEFAULT_MODEL,
         max_tokens: int = 2048,
+        observers: list[Observer] | None = None,
     ) -> None:
         self._registry = registry
         self._model = model
@@ -81,17 +86,25 @@ class Orchestrator:
         self._manifests: dict[str, AgentManifest] = {}
         self._agents: dict[str, Agent] = {}
         self._llm = llm
+        self._events = EventEmitter(observers)
 
     def _ensure_llm(self) -> LLM:
         if self._llm is None:
             self._llm = LLM()
         return self._llm
 
+    def subscribe(self, observer: Observer) -> None:
+        """Register a fire-and-forget observer (UI, logs, analytics)."""
+        self._events.subscribe(observer)
+
     def register_agent(self, manifest: AgentManifest) -> None:
         if manifest.name in self._manifests:
             raise ValueError(f"agent already registered: {manifest.name!r}")
         # Build the Agent now so an invalid allowlist fails at registration.
-        self._agents[manifest.name] = Agent(manifest, self._registry, self._llm)
+        # Agents share the orchestrator's event bus so tool-level events surface.
+        self._agents[manifest.name] = Agent(
+            manifest, self._registry, self._llm, self._events
+        )
         self._manifests[manifest.name] = manifest
 
     def roster(self) -> list[str]:
@@ -151,6 +164,12 @@ class Orchestrator:
         unknown = [s.agent for s in decision.plan if s.agent not in self._agents]
         if unknown:
             raise ValueError(f"router chose unknown agent(s): {unknown}")
+        self._events.emit(
+            "route.decided",
+            kind=decision.kind,
+            plan=[s.agent for s in decision.plan],
+            question=decision.question,
+        )
         return decision
 
     def dispatch(self, request: str) -> tuple[RoutingDecision, list[AgentResult]]:
@@ -162,8 +181,32 @@ class Orchestrator:
         decision = self.route(request)
         if decision.kind == "clarify":
             return decision, []
-        results = [self._agents[step.agent].run(step.task) for step in decision.plan]
+        results = [self._safe_run(step.agent, step.task) for step in decision.plan]
         return decision, results
+
+    def _safe_run(self, name: str, task: str) -> AgentResult:
+        """Run a sub-agent, boxing any failure so the conductor stays alive.
+
+        A Tier 3 boundary: if the agent's run raises (API error, bug, anything),
+        the orchestrator gets a human-friendly result plus a short error string
+        for logs — never an exception that kills the whole dispatch.
+        """
+        self._events.emit("dispatch.start", agent=name, task=task)
+        try:
+            result = self._agents[name].run(task)
+        except Exception as exc:  # noqa: BLE001 — box the failure as data
+            logger.warning("sub-agent %r failed: %s", name, exc)
+            self._events.emit("dispatch.error", agent=name, error=str(exc))
+            return AgentResult(
+                agent=name,
+                output=f"[the {name} agent ran into trouble and was skipped]",
+                iterations=0,
+                converged=False,
+                stop_reason="error",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+        self._events.emit("dispatch.done", agent=name, converged=result.converged)
+        return result
 
 
 def _first_json(response) -> dict:

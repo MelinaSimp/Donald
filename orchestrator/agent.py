@@ -11,17 +11,24 @@ What this tier guarantees:
                        returns a clean "didn't converge", never a hang.
   * Bounded calls    — max_tokens ceiling and a declared model per agent.
 
-Deliberately *not* in this tier: boxing tool/sub-agent failures as data
-(Tier 3) and the confirmation gate (Tier 4). Tool handlers are called directly
-here; Tier 3 will wrap that boundary.
+Tier 3 adds failure isolation at the tool-execution boundary: a tool that
+raises is converted to an error tool_result the model can read and react to,
+never an exception that escapes the loop. The confirmation gate (Tier 4) is
+still deliberately out of scope.
 """
 
 from __future__ import annotations
 
+import json
+import logging
 from dataclasses import dataclass, field
+from typing import Any
 
+from .events import EventEmitter
 from .llm import LLM, DEFAULT_MODEL
 from .registry import ToolRegistry, ToolView
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -49,6 +56,7 @@ class AgentResult:
     iterations: int
     converged: bool
     stop_reason: str | None = None
+    error: str | None = None  # short log string when a boundary boxed a failure
 
 
 class Agent:
@@ -59,6 +67,7 @@ class Agent:
         manifest: AgentManifest,
         registry: ToolRegistry,
         llm: LLM | None = None,
+        events: EventEmitter | None = None,
     ) -> None:
         self.manifest = manifest
         # Resolve the allowlist into a filtered view now, so an invalid
@@ -67,6 +76,7 @@ class Agent:
         # LLM is created lazily on first run so dry inspection (and tests)
         # don't require an API key.
         self._llm = llm
+        self._events = events or EventEmitter()
 
     def _ensure_llm(self) -> LLM:
         if self._llm is None:
@@ -105,31 +115,54 @@ class Agent:
 
             # Execute each requested tool and feed all results back in a single
             # user turn (the API expects one tool_result per tool_use, batched).
-            tool_results = []
-            for block in response.content:
-                if getattr(block, "type", None) != "tool_use":
-                    continue
-                tool = self.tools.get(block.name)
-                result = tool.handler(dict(block.input))
-                tool_results.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": result,
-                    }
-                )
+            tool_results = [
+                self._execute_tool_call(block.name, dict(block.input), block.id)
+                for block in response.content
+                if getattr(block, "type", None) == "tool_use"
+            ]
             messages.append({"role": "user", "content": tool_results})
 
         # Loop exhausted without the model finishing — bounded, not hung.
         return AgentResult(
             agent=m.name,
-            output=(
-                f"[did not converge within {m.max_iterations} iterations]"
-            ),
+            output=f"[did not converge within {m.max_iterations} iterations]",
             iterations=m.max_iterations,
             converged=False,
             stop_reason=last_stop,
         )
+
+    def _execute_tool_call(
+        self, name: str, tool_input: dict[str, Any], tool_use_id: str
+    ) -> dict[str, Any]:
+        """Run one tool call, converting any failure into an error result.
+
+        This is a Tier 3 boundary: an out-of-scope tool name (PermissionError)
+        or a handler that raises becomes a structured `{"error": ...}` result
+        the model can read and react to — it never throws past the loop.
+        """
+        self._events.emit("tool.start", agent=self.manifest.name, tool=name)
+        try:
+            content = self.tools.get(name).handler(tool_input)
+        except Exception as exc:  # noqa: BLE001 — box the failure as data
+            logger.warning(
+                "tool %r failed in agent %r: %s", name, self.manifest.name, exc
+            )
+            self._events.emit(
+                "tool.error", agent=self.manifest.name, tool=name, error=str(exc)
+            )
+            return {
+                "type": "tool_result",
+                "tool_use_id": tool_use_id,
+                "content": json.dumps({"error": f"{type(exc).__name__}: {exc}"}),
+                "is_error": True,
+            }
+        self._events.emit("tool.result", agent=self.manifest.name, tool=name)
+        return {
+            "type": "tool_result",
+            "tool_use_id": tool_use_id,
+            "content": content,
+            "is_error": False,
+        }
 
 
 def _text_of(response) -> str:
