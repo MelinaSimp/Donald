@@ -112,9 +112,10 @@ export class Background {
           col += vec3(0.85, 0.92, 1.0) * s1 * 1.1;
           col += vec3(1.0, 0.95, 0.9) * s2 * 1.4;
 
-          // Soft glow pooled behind the orb, in the orb's live color.
-          float glow = exp(-r * 3.2) * uGlowStrength;
-          col += uGlowColor * glow;
+          // Soft glow pooled behind the orb, in the orb's live color. Kept
+          // gentle and wide so it reads as a glow, never a filled disc.
+          float glow = (exp(-r * 4.2) * 0.55 + exp(-r * 1.8) * 0.18) * uGlowStrength;
+          col += uGlowColor * glow * 0.7;
 
           // Vignette toward the corners keeps the eye centered.
           col *= smoothstep(1.25, 0.25, r);

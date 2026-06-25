@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Orb } from './orb.js';
 import { Background } from './background.js';
+import { AudioReactor } from './audio.js';
 import { buildStates } from './states.js';
 import { prefersReducedMotion } from './util.js';
 
@@ -21,6 +22,7 @@ export class CosmicInterface {
 
     this.background = new Background(this.root); // furthest-back layer
     this._initOrbLayer();
+    this.audio = new AudioReactor();
 
     // A live, eased copy of the current mood so cross-fades between states are
     // smooth even if the target flips mid-transition.
@@ -92,7 +94,8 @@ export class CosmicInterface {
       target.color.copy(target.cycle.a).lerp(target.cycle.b, k);
     }
 
-    this.orb.update(dt, t, target, null /* audio added in Tier 3 */);
+    const audio = this.audio.sample(dt, t, this.state);
+    this.orb.update(dt, t, target, audio);
 
     // Background reads the orb's live color so its glow tracks the orb.
     this.background.update(dt, t, target.bgGlow, this.orb.uniforms.uColor.value);
@@ -113,3 +116,7 @@ const root = document.getElementById('scene');
 const app = new CosmicInterface(root);
 window.cosmic = app;
 window.setState = (n) => app.setState(n);
+// Real audio must be unlocked by a user gesture (and resumed for iOS).
+window.enableMic = () => app.audio.attachMic().then(() => app.audio.resume());
+window.attachAudio = (el, opts) => app.audio.attachElement(el, opts);
+addEventListener('pointerdown', () => app.audio.resume(), { passive: true });

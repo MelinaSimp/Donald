@@ -93,12 +93,12 @@ export class Orb {
     this.glowUniforms = {
       uColor: { value: new THREE.Color('#ff8a3d') },
       uIntensity: { value: 0.5 },
-      uPower: { value: 3.0 },
+      uPower: { value: 2.0 },
     };
     const glowMat = new THREE.ShaderMaterial({
       uniforms: this.glowUniforms,
       transparent: true,
-      side: THREE.BackSide,
+      side: THREE.FrontSide, // rim-only halo (bright at silhouette, clear through center)
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       vertexShader: /* glsl */ `
@@ -123,7 +123,7 @@ export class Orb {
         }
       `,
     });
-    this.glow = new THREE.Mesh(new THREE.IcosahedronGeometry(1.5, 5), glowMat);
+    this.glow = new THREE.Mesh(new THREE.IcosahedronGeometry(1.32, 5), glowMat);
     this.group.add(this.glow);
 
     // Live (eased) animation state.
