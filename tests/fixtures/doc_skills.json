@@ -1,0 +1,22 @@
+{
+  "domain": "document summarization",
+  "competencies": [
+    "Extract key points from long documents",
+    "Produce concise bullet-point summaries",
+    "Preserve factual accuracy",
+    "Handle multiple document formats"
+  ],
+  "tools_available": ["web_search", "calculator"],
+  "tools_wishlist": [
+    {
+      "name": "pdf_extract",
+      "purpose": "pull text out of PDF files",
+      "external_dependency": "pdfminer"
+    }
+  ],
+  "design_patterns": ["map-reduce summarization", "chunk-and-merge"],
+  "sources": [
+    {"url": "https://example.com/a", "title": "Summarization guide", "excerpt": "best practices"},
+    {"url": "https://example.com/b", "title": "RAG patterns", "excerpt": "retrieval"}
+  ]
+}

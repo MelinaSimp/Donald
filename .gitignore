@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# Factory runtime artifacts
+factory.db
+*.db
+
+# Generated specs are runtime output; keep the directory, ignore its contents.
+agent-specs/*.md
