@@ -206,6 +206,24 @@ def test_tier6_send_message_unconfigured_is_honest():
     print("✓ Tier 6: send_message says so honestly when email isn't configured")
 
 
+def test_tier6_invoke_tool_respects_gate():
+    # The send-test CLI path: run a consequential tool directly, same gate.
+    with tempfile.TemporaryDirectory() as d:
+        tmp = Path(d)
+        agent, ctx, *_ = make_agent(tmp, FakeLLM([]), gate=lambda *a: False)
+        ctx.mailer = FakeMailer()
+        out = agent.invoke_tool("send_message", {"to": "a@b.c", "body": "hi"}, "send-test")
+        assert "did not approve" in out and ctx.mailer.sent == []  # gate blocked it
+
+    with tempfile.TemporaryDirectory() as d:
+        tmp = Path(d)
+        agent, ctx, *_ = make_agent(tmp, FakeLLM([]), gate=lambda *a: True)
+        ctx.mailer = FakeMailer()
+        out = agent.invoke_tool("send_message", {"to": "a@b.c", "body": "hi"}, "send-test")
+        assert "Sent to a@b.c" in out and ctx.mailer.sent == [("a@b.c", "", "hi")]
+    print("✓ Tier 6: invoke_tool (send-test) goes through the same gate")
+
+
 def test_tier6_prompt_injection_rule_present():
     with tempfile.TemporaryDirectory() as d:
         tmp = Path(d)

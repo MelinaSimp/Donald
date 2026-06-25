@@ -157,6 +157,13 @@ class Agent:
             "is_error": is_error,
         }
 
+    def invoke_tool(self, name: str, tool_input: dict[str, Any], source: str = "manual") -> str:
+        """Run a single tool directly through the SAME confirmation gate + audit
+        path the model uses — no LLM call. Handy for testing a consequential tool
+        (e.g. send_message) end-to-end without involving the brain."""
+        result = self._run_tool(ToolCall(id="manual", name=name, input=tool_input), source)
+        return result["content"]
+
     def reset(self) -> None:
         """Clear short-term conversation history (memory persists)."""
         self.messages.clear()

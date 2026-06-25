@@ -8,6 +8,7 @@
   python -m wren.cli kill       # pause all proactive behaviour (kill switch)
   python -m wren.cli unkill     # resume
   python -m wren.cli cost       # session/lifetime model cost from the audit log
+  python -m wren.cli send-test  # send a test email through the gated path (no model)
 """
 from __future__ import annotations
 
@@ -93,6 +94,26 @@ def cmd_kill(paused: bool) -> None:
     print("Proactive behaviour paused." if paused else "Proactive behaviour resumed.")
 
 
+def cmd_send_test() -> None:
+    """Send a test email through the exact gated path send_message uses — without
+    the model — to confirm SMTP creds and the confirmation gate work."""
+    from .app import build_app
+
+    app = build_app()
+    if app.ctx.mailer is None:
+        print("Email isn't configured. Set email.smtp_host / email.from_addr in "
+              "config.yaml and SMTP_USERNAME / SMTP_PASSWORD in .env.")
+        return
+    to = input("To: ").strip()
+    subject = input("Subject: ").strip()
+    body = input("Body: ").strip()
+    # Same gate + audit path the model takes — console_gate will prompt y/N.
+    result = app.agent.invoke_tool(
+        "send_message", {"to": to, "subject": subject, "body": body}, source="send-test"
+    )
+    print(result)
+
+
 def cmd_cost() -> None:
     import json
 
@@ -124,6 +145,8 @@ def main(argv: list[str] | None = None) -> None:
         cmd_kill(True)
     elif cmd == "unkill":
         cmd_kill(False)
+    elif cmd == "send-test":
+        cmd_send_test()
     elif cmd == "cost":
         cmd_cost()
     else:
