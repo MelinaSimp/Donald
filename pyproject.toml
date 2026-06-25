@@ -1,0 +1,35 @@
+[project]
+name = "donald"
+version = "0.1.0"
+description = "Donald — a personal Jarvis-style voice assistant, built tier by tier."
+requires-python = ">=3.10"
+dependencies = [
+    "anthropic>=0.40",
+    "python-dotenv>=1.0",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+# Tier 2 — voice. Only needed once you turn on speech.
+voice = [
+    "deepgram-sdk>=3.7",
+    "elevenlabs>=1.9",
+    "sounddevice>=0.4",
+    "numpy>=1.26",
+]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+donald = "donald.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["donald*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
