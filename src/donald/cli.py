@@ -13,7 +13,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="donald", description=AGENT_DESCRIPTION)
     sub = parser.add_subparsers(dest="command")
 
-    sub.add_parser("prompt", help="Print the assembled system prompt")
+    prompt_p = sub.add_parser("prompt", help="Print the assembled system prompt")
+    prompt_p.add_argument(
+        "--self-knowledge",
+        choices=["slim", "full", "none"],
+        default=None,
+        help="Self-knowledge flavor to inject (default: slim / $DONALD_SELF_KNOWLEDGE)",
+    )
 
     sk = sub.add_parser("self-knowledge", help="Manage the self-knowledge document")
     mode = sk.add_mutually_exclusive_group(required=True)
@@ -63,7 +69,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.command == "prompt":
         from .prompt import build_system_prompt
 
-        print(build_system_prompt())
+        print(build_system_prompt(self_knowledge=args.self_knowledge))
         return 0
     if args.command == "self-knowledge":
         return _run_self_knowledge(args)

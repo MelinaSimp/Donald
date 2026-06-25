@@ -65,6 +65,7 @@ _Generated from the integrations module._
 <!-- AUTO-START: recent-activity -->
 _Generated from git log (last 14 days)._
 
+- `2026-06-25` — Phase 4: pre-commit hook installer + CI drift check
 - `2026-06-25` — Phase 3: drift checker + allowlist + CLI subcommands
 - `2026-06-25` — Phase 2: introspecting generators + renderer
 - `2026-06-25` — Phase 1: self-knowledge doc scaffold + AUTO block parser
