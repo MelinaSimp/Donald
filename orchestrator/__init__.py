@@ -6,6 +6,15 @@ isolation, confirmation gates, handoffs, hot-reload) build on this backbone.
 """
 
 from .agent import Agent, AgentManifest, AgentResult
+from .confirmation import (
+    AllowAll,
+    Approver,
+    CallbackApprover,
+    ConfirmationDecision,
+    ConfirmationRequest,
+    ConsoleApprover,
+    DenyAll,
+)
 from .events import EventEmitter, Observer
 from .llm import LLM, DEFAULT_MODEL
 from .orchestrator import Orchestrator, RoutingDecision, RouteStep
@@ -16,6 +25,13 @@ __all__ = [
     "Agent",
     "AgentManifest",
     "AgentResult",
+    "AllowAll",
+    "Approver",
+    "CallbackApprover",
+    "ConfirmationDecision",
+    "ConfirmationRequest",
+    "ConsoleApprover",
+    "DenyAll",
     "EventEmitter",
     "Observer",
     "LLM",

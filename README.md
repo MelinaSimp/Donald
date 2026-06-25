@@ -5,7 +5,7 @@ what, with which tools, under what limits, and what happens when something
 goes wrong. Built tier by tier; each tier is independently shippable.
 
 - **Stack:** Python, Anthropic SDK (`claude-opus-4-8`, adaptive thinking).
-- **Status:** Tiers 1–3 landed. Tiers 4–6 to follow.
+- **Status:** Tiers 1–4 landed. Tiers 5–6 to follow.
 
 ## The six tiers
 
@@ -14,7 +14,7 @@ goes wrong. Built tier by tier; each tier is independently shippable.
 | 1 | Smart routing (dispatch intelligence) | **done** |
 | 2 | Least-privilege tool scoping + bounded execution | **done** |
 | 3 | Failure isolation at every boundary | **done** |
-| 4 | Human-in-the-loop confirmation gates | planned |
+| 4 | Human-in-the-loop confirmation gates | **done** |
 | 5 | Handoff system (propose, don't chain) | planned |
 | 6 | Live hot-reload (config-driven runtime) | planned |
 
@@ -63,6 +63,19 @@ takes down the run:
 
 Each boundary logs the contained failure, so it's still visible to operators.
 
+## What's here (Tier 4)
+
+Destructive/irreversible actions stop and ask first — and the gate lives in the
+**router**, not in the tools:
+
+- A tool marked `requires_confirmation` is **not executed** when called; the
+  router surfaces a structured `confirmation_required` payload (tool + inputs)
+  to an **approver** and waits.
+- Only an explicit approval runs the action, via a separate execute-confirmed
+  path (`Agent.execute_confirmed`).
+- The default approver is **`DenyAll`** (fail-safe). Swap in `AllowAll`,
+  `CallbackApprover` (policy/UI hook), or `ConsoleApprover` (interactive y/N).
+
 ## Quickstart
 
 ```bash
@@ -72,6 +85,7 @@ pip install -r requirements.txt
 python demo.py --dry
 python demo_routing.py --dry
 python demo_isolation.py
+python demo_confirm.py
 
 # Live (needs ANTHROPIC_API_KEY):
 export ANTHROPIC_API_KEY=sk-ant-...

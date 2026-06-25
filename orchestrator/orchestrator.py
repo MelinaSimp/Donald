@@ -23,6 +23,7 @@ import logging
 from dataclasses import dataclass, field
 
 from .agent import Agent, AgentManifest, AgentResult
+from .confirmation import Approver
 from .events import EventEmitter, Observer
 from .llm import LLM, DEFAULT_MODEL
 from .registry import ToolRegistry
@@ -79,6 +80,7 @@ class Orchestrator:
         model: str = DEFAULT_MODEL,
         max_tokens: int = 2048,
         observers: list[Observer] | None = None,
+        approver: Approver | None = None,
     ) -> None:
         self._registry = registry
         self._model = model
@@ -87,6 +89,8 @@ class Orchestrator:
         self._agents: dict[str, Agent] = {}
         self._llm = llm
         self._events = EventEmitter(observers)
+        # One confirmation gate shared by every agent the conductor dispatches.
+        self._approver = approver
 
     def _ensure_llm(self) -> LLM:
         if self._llm is None:
@@ -103,7 +107,7 @@ class Orchestrator:
         # Build the Agent now so an invalid allowlist fails at registration.
         # Agents share the orchestrator's event bus so tool-level events surface.
         self._agents[manifest.name] = Agent(
-            manifest, self._registry, self._llm, self._events
+            manifest, self._registry, self._llm, self._events, self._approver
         )
         self._manifests[manifest.name] = manifest
 

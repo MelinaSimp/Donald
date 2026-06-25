@@ -24,6 +24,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from .confirmation import Approver, ConfirmationDecision, ConfirmationRequest, DenyAll
 from .events import EventEmitter
 from .llm import LLM, DEFAULT_MODEL
 from .registry import ToolRegistry, ToolView
@@ -68,6 +69,7 @@ class Agent:
         registry: ToolRegistry,
         llm: LLM | None = None,
         events: EventEmitter | None = None,
+        approver: Approver | None = None,
     ) -> None:
         self.manifest = manifest
         # Resolve the allowlist into a filtered view now, so an invalid
@@ -77,6 +79,8 @@ class Agent:
         # don't require an API key.
         self._llm = llm
         self._events = events or EventEmitter()
+        # Fail-safe default: gated tools don't run without an explicit approver.
+        self._approver = approver or DenyAll()
 
     def _ensure_llm(self) -> LLM:
         if self._llm is None:
@@ -134,15 +138,44 @@ class Agent:
     def _execute_tool_call(
         self, name: str, tool_input: dict[str, Any], tool_use_id: str
     ) -> dict[str, Any]:
-        """Run one tool call, converting any failure into an error result.
+        """Route one tool call: gate it (Tier 4), then run it (Tier 3 boxed).
 
-        This is a Tier 3 boundary: an out-of-scope tool name (PermissionError)
-        or a handler that raises becomes a structured `{"error": ...}` result
-        the model can read and react to — it never throws past the loop.
+        Two boundaries meet here, both owned by the router rather than the tool:
+          * Tier 4 — if the tool requires confirmation, surface the request to
+            the approver and DON'T execute unless explicitly approved.
+          * Tier 3 — an out-of-scope name (PermissionError) or a throwing
+            handler becomes a structured error result, never an exception.
         """
         self._events.emit("tool.start", agent=self.manifest.name, tool=name)
         try:
-            content = self.tools.get(name).handler(tool_input)
+            tool = self.tools.get(name)  # enforces the allowlist
+            if tool.requires_confirmation:
+                decision = self._gate(name, tool_input)
+                if not decision.approved:
+                    self._events.emit(
+                        "confirmation.denied",
+                        agent=self.manifest.name,
+                        tool=name,
+                        reason=decision.reason,
+                    )
+                    return _tool_result(
+                        tool_use_id,
+                        json.dumps(
+                            {
+                                "confirmation_required": True,
+                                "tool": name,
+                                "input": tool_input,
+                                "status": "not_executed",
+                                "reason": decision.reason,
+                            }
+                        ),
+                        is_error=False,  # not an error — the model should adapt
+                    )
+                self._events.emit(
+                    "confirmation.approved", agent=self.manifest.name, tool=name
+                )
+            # Execute-confirmed (or ungated) path — the only place a handler runs.
+            content = self._invoke_handler(tool, tool_input)
         except Exception as exc:  # noqa: BLE001 — box the failure as data
             logger.warning(
                 "tool %r failed in agent %r: %s", name, self.manifest.name, exc
@@ -150,19 +183,48 @@ class Agent:
             self._events.emit(
                 "tool.error", agent=self.manifest.name, tool=name, error=str(exc)
             )
-            return {
-                "type": "tool_result",
-                "tool_use_id": tool_use_id,
-                "content": json.dumps({"error": f"{type(exc).__name__}: {exc}"}),
-                "is_error": True,
-            }
+            return _tool_result(
+                tool_use_id,
+                json.dumps({"error": f"{type(exc).__name__}: {exc}"}),
+                is_error=True,
+            )
         self._events.emit("tool.result", agent=self.manifest.name, tool=name)
-        return {
-            "type": "tool_result",
-            "tool_use_id": tool_use_id,
-            "content": content,
-            "is_error": False,
-        }
+        return _tool_result(tool_use_id, content, is_error=False)
+
+    def _gate(self, name: str, tool_input: dict[str, Any]) -> ConfirmationDecision:
+        """Surface a confirmation request to the approver and return its verdict."""
+        request = ConfirmationRequest(
+            agent=self.manifest.name, tool=name, tool_input=tool_input
+        )
+        self._events.emit(
+            "confirmation.required",
+            agent=self.manifest.name,
+            tool=name,
+            input=tool_input,
+        )
+        return self._approver.decide(request)
+
+    def _invoke_handler(self, tool, tool_input: dict[str, Any]) -> str:
+        """Run the tool handler — the execute path, with no gate. Internal."""
+        return tool.handler(tool_input)
+
+    def execute_confirmed(self, name: str, tool_input: dict[str, Any]) -> str:
+        """Run a gated tool AFTER out-of-band human approval — bypasses the gate.
+
+        Still enforces the allowlist (least privilege). This is the separate
+        "execute-confirmed" path: callers approve a `ConfirmationRequest`, then
+        invoke this to actually perform the action.
+        """
+        return self._invoke_handler(self.tools.get(name), tool_input)
+
+
+def _tool_result(tool_use_id: str, content: str, *, is_error: bool) -> dict[str, Any]:
+    return {
+        "type": "tool_result",
+        "tool_use_id": tool_use_id,
+        "content": content,
+        "is_error": is_error,
+    }
 
 
 def _text_of(response) -> str:
