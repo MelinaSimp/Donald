@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Orb } from './orb.js';
+import { Background } from './background.js';
 import { buildStates } from './states.js';
 import { prefersReducedMotion } from './util.js';
 
@@ -18,6 +19,7 @@ export class CosmicInterface {
     this.clock = new THREE.Clock();
     this.reducedMotion = prefersReducedMotion();
 
+    this.background = new Background(this.root); // furthest-back layer
     this._initOrbLayer();
 
     // A live, eased copy of the current mood so cross-fades between states are
@@ -75,6 +77,7 @@ export class CosmicInterface {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.background.resize();
   }
 
   _tick() {
@@ -90,6 +93,9 @@ export class CosmicInterface {
     }
 
     this.orb.update(dt, t, target, null /* audio added in Tier 3 */);
+
+    // Background reads the orb's live color so its glow tracks the orb.
+    this.background.update(dt, t, target.bgGlow, this.orb.uniforms.uColor.value);
 
     this.renderer.render(this.scene, this.camera);
   }
