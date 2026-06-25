@@ -48,7 +48,8 @@ key (a fake LLM drives the loop):
 python tests/test_wren.py
 ```
 
-Then end-to-end with a real key (`ANTHROPIC_API_KEY` set):
+Then end-to-end with a real key (`ANTHROPIC_API_KEY` set) — a guided, copy-paste
+sitting with exact inputs and expected outputs is in [`VERIFY.md`](VERIFY.md):
 
 - **Tier 1 — the brain.** `python -m wren.cli`, hold a short back-and-forth; it
   remembers earlier turns. Quit and restart → it's forgotten the chat (memory
