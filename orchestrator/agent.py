@@ -30,6 +30,11 @@ class AgentManifest:
 
     name: str
     system_prompt: str
+    # A one-line statement of what this agent owns, read by the Tier 1 router.
+    # Note: this describes the agent to the *orchestrator*; the agent's own
+    # system_prompt never mentions other agents (they stay ignorant of each
+    # other — routing knowledge centralizes in the conductor).
+    description: str = ""
     allowed_tools: list[str] = field(default_factory=list)
     model: str = DEFAULT_MODEL
     max_iterations: int = 8

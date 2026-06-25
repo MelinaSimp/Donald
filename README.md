@@ -5,14 +5,14 @@ what, with which tools, under what limits, and what happens when something
 goes wrong. Built tier by tier; each tier is independently shippable.
 
 - **Stack:** Python, Anthropic SDK (`claude-opus-4-8`, adaptive thinking).
-- **Status:** Tier 2 backbone landed. Tiers 1, 3–6 to follow.
+- **Status:** Tiers 1–2 landed. Tiers 3–6 to follow.
 
 ## The six tiers
 
 | Tier | What | Status |
 |------|------|--------|
-| 1 | Smart routing (dispatch intelligence) | planned |
-| 2 | Least-privilege tool scoping + bounded execution | **this PR** |
+| 1 | Smart routing (dispatch intelligence) | **done** |
+| 2 | Least-privilege tool scoping + bounded execution | **done** |
 | 3 | Failure isolation at every boundary | planned |
 | 4 | Human-in-the-loop confirmation gates | planned |
 | 5 | Handoff system (propose, don't chain) | planned |
@@ -34,17 +34,32 @@ The backbone everything else leans on:
 Deliberately **not** here yet: boxing failures as data (Tier 3) and the
 confirmation gate (Tier 4). Keeping tier boundaries honest.
 
+## What's here (Tier 1)
+
+The **`Orchestrator`** is the conductor — a router, not a worker:
+
+- Reads a **routing policy built from the agent roster** on every request, so
+  adding an agent automatically teaches the conductor about it.
+- Enforces four rules: **ownership** (route to the owning agent), **ordering**
+  (design/spec before implementation), **decomposition** (a multi-step request
+  → an ordered list of separate dispatches), and **clarify-don't-guess** (one
+  short question when genuinely ambiguous).
+- Routing intelligence lives **only** in the conductor — individual agents
+  never learn about each other.
+
 ## Quickstart
 
 ```bash
 pip install -r requirements.txt
 
-# No API key needed — proves an agent is offered exactly its allowlist:
+# No API key needed — Tier 2 (allowlist) and Tier 1 (policy/isolation) checks:
 python demo.py --dry
+python demo_routing.py --dry
 
-# Live (needs ANTHROPIC_API_KEY) — runs a bounded agent:
+# Live (needs ANTHROPIC_API_KEY):
 export ANTHROPIC_API_KEY=sk-ant-...
-python demo.py
+python demo.py            # a bounded agent
+python demo_routing.py    # routes the four spec scenarios
 ```
 
 ## Design principles

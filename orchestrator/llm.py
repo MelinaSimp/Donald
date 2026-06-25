@@ -47,3 +47,31 @@ class LLM:
         if tools:
             kwargs["tools"] = tools
         return self._client.messages.create(**kwargs)
+
+    def decide(
+        self,
+        *,
+        model: str,
+        system: str,
+        messages: list[dict[str, Any]],
+        schema: dict[str, Any],
+        max_tokens: int,
+        effort: str = "high",
+    ) -> anthropic.types.Message:
+        """A structured-output call constrained to `schema` (no tools).
+
+        Used by the orchestrator's router: the model must return a routing
+        decision matching the JSON schema, so the conductor never has to parse
+        free-form prose to learn who should act next.
+        """
+        return self._client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            system=system,
+            messages=messages,
+            thinking={"type": "adaptive"},
+            output_config={
+                "effort": effort,
+                "format": {"type": "json_schema", "schema": schema},
+            },
+        )
