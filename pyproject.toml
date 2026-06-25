@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-security"
+version = "0.1.0"
+description = "Framework-agnostic, dependency-free security hardening primitives for AI-agent codebases."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+keywords = ["security", "llm", "agent", "prompt-injection", "hardening"]
+# Intentionally zero runtime dependencies: the library is pure standard
+# library so it drops into any stack without a dependency negotiation.
+dependencies = []
+
+[project.optional-dependencies]
+# Tooling the CVE scanner shells out to (not imported); install where you run scans.
+scan = ["pip-audit"]
+dev = ["pytest"]
+
+[tool.setuptools]
+packages = ["security"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

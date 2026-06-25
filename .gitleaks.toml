@@ -1,0 +1,48 @@
+# 2.3 - gitleaks config: extend the default ruleset, add project-specific
+# secret shapes, and allowlist the unavoidable false positives.
+#
+# `useDefault = true` pulls in gitleaks' built-in rules (AWS, GitHub, Stripe,
+# JWTs, etc.); the rules below are additive.
+
+title = "Donald agent-security gitleaks config"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "agent-bearer-token"
+description = "Agent HTTP bearer token"
+# Tune this regex to your actual bearer-token env var name / shape.
+regex = '''(?i)(AGENT_BEARER_TOKEN|BEARER_TOKEN)\s*[:=]\s*['"]?[A-Za-z0-9._\-]{24,}'''
+tags = ["bearer", "agent"]
+
+[[rules]]
+id = "doppler-token"
+description = "Doppler service/CLI token"
+regex = '''dop_v1_[A-Za-z0-9]{16,}'''
+tags = ["doppler"]
+
+[[rules]]
+id = "vault-token"
+description = "HashiCorp Vault token"
+regex = '''hvs\.[A-Za-z0-9_\-]{16,}'''
+tags = ["vault"]
+
+[allowlist]
+description = "Unavoidable false positives"
+# These files *describe* secret shapes (the redaction module, this config,
+# and tests) rather than containing live secrets.
+paths = [
+  '''security/log_redact\.py''',
+  '''security/injection_gate\.py''',
+  '''\.gitleaks\.toml''',
+  '''tests/.*''',
+  '''docs/.*''',
+]
+# Common placeholder values used in docs/tests.
+regexes = [
+  '''<new_value>''',
+  '''<redacted>''',
+  '''sk-ant-EXAMPLE''',
+  '''ghp_EXAMPLE''',
+]
