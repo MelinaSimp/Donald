@@ -1,6 +1,13 @@
 {
+  "name": "aether-cosmic-interface",
+  "version": "1.0.0",
+  "description": "A living cosmic interface for an AI agent — voice-reactive orb, deep-space nebula, and an orbiting constellation of sub-agents.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 8000"
+  },
   "dependencies": {
-    "playwright": "^1.49.0",
     "three": "^0.160.0"
   }
 }
