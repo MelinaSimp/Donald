@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from .base import BaseTool
-from .builtin import CalculatorTool, EchoTool, SendEmailTool, WebSearchTool
+from .builtin import CalculatorTool, ClockTool, EchoTool, SendEmailTool, WebSearchTool
 from .registry import ToolRegistry
 
 
@@ -19,6 +19,7 @@ def build_default_registry() -> ToolRegistry:
     registry.register(CalculatorTool())
     registry.register(WebSearchTool())
     registry.register(SendEmailTool())
+    registry.register(ClockTool())
     return registry
 
 
@@ -29,5 +30,6 @@ __all__ = [
     "CalculatorTool",
     "WebSearchTool",
     "SendEmailTool",
+    "ClockTool",
     "build_default_registry",
 ]

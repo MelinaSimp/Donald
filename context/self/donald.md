@@ -30,6 +30,7 @@ _Generated from the tool registry._
 | Tool | Description | Category |
 | --- | --- | --- |
 | `calculator` | Evaluate a basic arithmetic expression and return the result. | utility |
+| `clock` | Return the current date and time. | utility |
 | `echo` | Return the text it was given, unchanged. | utility |
 | `send_email` | Compose and send an email via the configured mail provider. | communication |
 | `web_search` | Search the web and return ranked result snippets. | research |
@@ -64,6 +65,8 @@ _Generated from the integrations module._
 <!-- AUTO-START: recent-activity -->
 _Generated from git log (last 14 days)._
 
+- `2026-06-25` — Phase 3: drift checker + allowlist + CLI subcommands
+- `2026-06-25` — Phase 2: introspecting generators + renderer
 - `2026-06-25` — Phase 1: self-knowledge doc scaffold + AUTO block parser
 - `2026-06-25` — Tier 1: minimal Donald agent scaffold
 <!-- AUTO-END: recent-activity -->

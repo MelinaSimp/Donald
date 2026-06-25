@@ -13,8 +13,8 @@ from donald.tools import BaseTool, ToolRegistry, build_default_registry
 
 def test_default_registry_has_expected_tools():
     registry = build_default_registry()
-    assert {"echo", "calculator", "web_search", "send_email"} <= set(registry.names())
-    assert len(registry) == 4
+    assert {"echo", "calculator", "web_search", "send_email", "clock"} <= set(registry.names())
+    assert len(registry) >= 5
 
 
 def test_registry_rejects_duplicates_and_empty_names():

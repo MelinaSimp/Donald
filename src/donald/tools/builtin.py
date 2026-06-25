@@ -47,3 +47,13 @@ class SendEmailTool(BaseTool):
     def execute(self, to: str = "", subject: str = "", body: str = "", **_: Any) -> Dict[str, Any]:
         # Placeholder: wired to a real backend via the SMTP integration.
         return {"queued": True, "to": to, "subject": subject}
+
+
+class ClockTool(BaseTool):
+    name = "clock"
+    description = "Return the current date and time."
+    category = "utility"
+
+    def execute(self, **_: Any) -> str:
+        # Placeholder: a real implementation would read a clock source.
+        return ""
