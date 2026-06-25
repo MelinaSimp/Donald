@@ -8,3 +8,9 @@ dist/
 .venv/
 venv/
 *.log
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+.env.local
