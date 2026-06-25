@@ -1,0 +1,4 @@
+# The orchestration layer targets a current Anthropic SDK (adaptive thinking,
+# the effort parameter, output_config). Upgrade with `pip install -U anthropic`
+# if a kwarg is rejected.
+anthropic>=0.70
