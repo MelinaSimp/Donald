@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { Orb } from './orb.js';
 import { Background } from './background.js';
 import { AudioReactor } from './audio.js';
+import { Constellation } from './constellation.js';
+import { AGENTS } from './agents.js';
 import { buildStates } from './states.js';
 import { prefersReducedMotion } from './util.js';
 
@@ -23,6 +25,12 @@ export class CosmicInterface {
     this.background = new Background(this.root); // furthest-back layer
     this._initOrbLayer();
     this.audio = new AudioReactor();
+
+    // Tier 4 — the floating sub-agent constellation.
+    this.labelRoot = document.getElementById('labels');
+    this.constellation = new Constellation(this.scene, this.camera, this.labelRoot);
+    this.constellation.setReducedMotion(this.reducedMotion);
+    for (const a of AGENTS) this.constellation.add(a);
 
     // A live, eased copy of the current mood so cross-fades between states are
     // smooth even if the target flips mid-transition.
@@ -99,6 +107,9 @@ export class CosmicInterface {
 
     // Background reads the orb's live color so its glow tracks the orb.
     this.background.update(dt, t, target.bgGlow, this.orb.uniforms.uColor.value);
+
+    // Constellation orbits + label tracking.
+    this.constellation.update(dt, t, { width: innerWidth, height: innerHeight });
 
     this.renderer.render(this.scene, this.camera);
   }
