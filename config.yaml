@@ -36,6 +36,15 @@ voice:
   show_transcript: true
   push_to_talk_key: space          # hold to talk
 
+email:
+  # Real send for the gated send_message tool (Tier 6). Leave smtp_host/from_addr
+  # blank to keep email disabled — send_message then says it isn't set up rather
+  # than pretending. Credentials go in .env (SMTP_USERNAME / SMTP_PASSWORD).
+  smtp_host: ""                    # e.g. smtp.gmail.com
+  smtp_port: 587                   # 587 = STARTTLS, 465 = implicit TLS
+  from_addr: ""                    # e.g. you@gmail.com
+  use_tls: true
+
 memory:
   # Long-term store (Tier 4). Plain JSON you can open and edit by hand.
   path: data/memory.json

@@ -40,6 +40,15 @@ class FakeLLM:
         return turn
 
 
+class FakeMailer:
+    def __init__(self):
+        self.sent = []
+
+    def send(self, to, subject, body):
+        self.sent.append((to, subject, body))
+        return f"Sent to {to}: {subject or '(no subject)'}"
+
+
 def say(text):
     return Turn(content=[{"type": "text", "text": text}], text=text,
                 tool_calls=[], stop_reason="end_turn")
@@ -170,15 +179,31 @@ def test_tier6_gate_blocks_then_allows():
 
     with tempfile.TemporaryDirectory() as d:
         tmp = Path(d)
-        # Gate approves.
+        # Gate approves -> the real mailer is invoked.
         llm = FakeLLM([
-            call_tool("send_message", {"to": "bob", "body": "hi"}),
+            call_tool("send_message", {"to": "bob@example.com", "body": "hi"}),
             say("Sent."),
         ])
-        agent, *_ = make_agent(tmp, llm, gate=lambda *a: True)
-        agent.respond("text bob hi")
-        assert "Sent to bob" in str(llm.calls[1]["messages"])
+        agent, ctx, *_ = make_agent(tmp, llm, gate=lambda *a: True)
+        ctx.mailer = FakeMailer()
+        agent.respond("email bob hi")
+        assert ctx.mailer.sent == [("bob@example.com", "", "hi")]
+        assert "Sent to bob@example.com" in str(llm.calls[1]["messages"])
     print("✓ Tier 6: gate blocks consequential tools until approved")
+
+
+def test_tier6_send_message_unconfigured_is_honest():
+    with tempfile.TemporaryDirectory() as d:
+        tmp = Path(d)
+        llm = FakeLLM([
+            call_tool("send_message", {"to": "bob@example.com", "body": "hi"}),
+            say("ok"),
+        ])
+        agent, ctx, *_ = make_agent(tmp, llm, gate=lambda *a: True)
+        assert ctx.mailer is None  # no email config in the test config
+        agent.respond("email bob hi")
+        assert "isn't set up" in str(llm.calls[1]["messages"])
+    print("✓ Tier 6: send_message says so honestly when email isn't configured")
 
 
 def test_tier6_prompt_injection_rule_present():

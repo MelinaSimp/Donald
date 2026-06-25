@@ -49,21 +49,31 @@ def register(registry: Registry, ctx) -> None:
         draft_message,
     )
 
-    # --- sending (gated) ----------------------------------------------------
+    # --- sending (gated, real email) ---------------------------------------
     def send_message(args: dict[str, Any]) -> str:
         to = (args.get("to") or "").strip()
         body = (args.get("body") or "").strip()
+        subject = (args.get("subject") or "").strip()
         if not to or not body:
             return "I need both a recipient and a body to send."
-        # Wire a real provider here later. For now we record the send.
-        return f"Sent to {to}: {body[:80]}"
+        if ctx.mailer is None:
+            return (
+                "Email isn't set up yet. Add email.smtp_host / email.from_addr to "
+                "config.yaml and SMTP_USERNAME / SMTP_PASSWORD to .env, then I can "
+                "send for real."
+            )
+        return ctx.mailer.send(to, subject, body)
 
     registry.add(
         "send_message",
-        "Send a message (email/text/DM) on the user's behalf. CONSEQUENTIAL: "
-        "this reaches someone and can't be undone.",
+        "Send an email on the user's behalf via their configured account. "
+        "CONSEQUENTIAL: this reaches someone and can't be undone.",
         obj(
-            {"to": string("Recipient."), "body": string("Message body.")},
+            {
+                "to": string("Recipient email address."),
+                "subject": string("Email subject."),
+                "body": string("Message body."),
+            },
             required=["to", "body"],
         ),
         send_message,

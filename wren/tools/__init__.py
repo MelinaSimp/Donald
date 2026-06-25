@@ -22,14 +22,18 @@ class ToolContext:
     reminders: Reminders
     notes: Notes
     memory: Any  # wren.memory.Memory
+    mailer: Any = None  # wren.mailer.Mailer | None (real send behind the gate)
 
 
 def build_context(config, memory) -> ToolContext:
+    from ..mailer import build_mailer
+
     return ToolContext(
         config=config,
         reminders=Reminders(config.resolve_path("reminders.path", "data/reminders.json")),
         notes=Notes(config.resolve_path("notes.path", "data/notes")),
         memory=memory,
+        mailer=build_mailer(config),
     )
 
 
