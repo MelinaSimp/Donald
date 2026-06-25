@@ -1,4 +1,4 @@
-"""Donald's terminal interface — a streaming chat REPL."""
+"""Donald's terminal interface — a streaming, tool-using agent REPL."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import sys
 
 import anthropic
 
+from . import tools
 from .persona import SYSTEM_PROMPT
 
 MODEL = "claude-opus-4-8"
@@ -20,6 +21,7 @@ BANNER = """\
  |____/ \\___/|_| |_|\\__,_|_|\\__,_|
 
  Donald — your terminal assistant.  Type /help for commands, /exit to leave.
+ Tools: read_file, write_file, run_shell, web_search (writes & shell ask first).
 """
 
 HELP = """\
@@ -28,7 +30,8 @@ Commands:
   /reset   Forget the conversation and start fresh
   /exit    Quit (Ctrl-D or Ctrl-C also work)
 
-Anything else you type is sent to Donald.
+Anything else you type is sent to Donald. He can read files, write files, run
+shell commands, and search the web — he'll ask before writing or running shell.
 """
 
 
@@ -44,21 +47,63 @@ def _build_client() -> anthropic.Anthropic:
     return anthropic.Anthropic()
 
 
-def _stream_reply(client: anthropic.Anthropic, messages: list[dict]) -> str:
-    """Stream one assistant reply to stdout and return the full text."""
+def _approved(name: str, args: dict) -> bool:
+    """Ask the operator to approve a machine-changing tool call."""
+    try:
+        answer = input(f"  allow {tools.describe(name, args)} ? [y/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+    return answer in ("y", "yes")
+
+
+def _run_tool_calls(blocks: list) -> list[dict]:
+    """Execute the tool_use blocks in an assistant turn; return tool_result blocks."""
+    results: list[dict] = []
+    for block in blocks:
+        if getattr(block, "type", None) != "tool_use":
+            continue  # skip text and any server-side tool blocks
+        print(f"  ↳ {tools.describe(block.name, block.input)}")
+        if block.name in tools.REQUIRES_APPROVAL and not _approved(block.name, block.input):
+            content, is_error = "Operator declined this action.", True
+        else:
+            content, is_error = tools.execute(block.name, block.input)
+        results.append(
+            {
+                "type": "tool_result",
+                "tool_use_id": block.id,
+                "content": content,
+                "is_error": is_error,
+            }
+        )
+    return results
+
+
+def _agent_turn(client: anthropic.Anthropic, messages: list[dict]) -> None:
+    """Run one full turn: stream replies and loop through any tool use."""
     print("Donald: ", end="", flush=True)
-    parts: list[str] = []
-    with client.messages.stream(
-        model=MODEL,
-        max_tokens=MAX_TOKENS,
-        system=SYSTEM_PROMPT,
-        messages=messages,
-    ) as stream:
-        for text in stream.text_stream:
-            parts.append(text)
-            print(text, end="", flush=True)
-    print("\n")
-    return "".join(parts)
+    while True:
+        with client.messages.stream(
+            model=MODEL,
+            max_tokens=MAX_TOKENS,
+            system=SYSTEM_PROMPT,
+            tools=tools.ALL_TOOLS,
+            messages=messages,
+        ) as stream:
+            for text in stream.text_stream:
+                print(text, end="", flush=True)
+            message = stream.get_final_message()
+        print()
+        messages.append({"role": "assistant", "content": message.content})
+
+        if message.stop_reason == "tool_use":
+            tool_results = _run_tool_calls(message.content)
+            messages.append({"role": "user", "content": tool_results})
+            continue
+        if message.stop_reason == "pause_turn":
+            # Server-side tool (web search) hit its loop limit — resume.
+            continue
+        return
 
 
 def main() -> None:
@@ -88,18 +133,17 @@ def main() -> None:
             print("(conversation cleared)\n")
             continue
 
+        checkpoint = len(messages)  # roll back to here if the turn fails
         messages.append({"role": "user", "content": user_input})
         try:
-            reply = _stream_reply(client, messages)
+            _agent_turn(client, messages)
+            print()
         except anthropic.APIStatusError as exc:
-            messages.pop()  # don't keep a turn we couldn't answer
+            del messages[checkpoint:]  # drop the failed turn so history stays valid
             print(f"\n[Donald hit an API error {exc.status_code}: {exc.message}]\n")
-            continue
         except anthropic.APIConnectionError:
-            messages.pop()
+            del messages[checkpoint:]
             print("\n[Network error reaching the API. Check your connection.]\n")
-            continue
-        messages.append({"role": "assistant", "content": reply})
 
 
 if __name__ == "__main__":
