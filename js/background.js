@@ -21,6 +21,7 @@ export class Background {
     this.renderer.setPixelRatio(this.dpr);
 
     this.mobile = isMobile();
+    this.reducedMotion = false;
     this.fade = 0;            // eased 0→1 fade-in on load
     this.glowStrength = 0.5;  // eased toward mood.bgGlow
     this.glowColor = new THREE.Color('#ff8a3d');
@@ -250,11 +251,13 @@ export class Background {
     this.skyUniforms.uGlowStrength.value = this.glowStrength;
     if (orbColor) dampColor(this.glowColor, orbColor, 2.0, dt);
 
-    // Slow drift of the whole web + a gentle wandering camera.
-    this.netGroup.rotation.y = t * 0.012;
-    this.netGroup.rotation.x = Math.sin(t * 0.03) * 0.08;
-    this.netCam.position.x = Math.sin(t * 0.05) * 0.6;
-    this.netCam.position.y = Math.cos(t * 0.04) * 0.4;
+    // Slow drift of the whole web + a gentle wandering camera. Calmed right
+    // down when the user prefers reduced motion.
+    const m = this.reducedMotion ? 0.2 : 1;
+    this.netGroup.rotation.y = t * 0.012 * m;
+    this.netGroup.rotation.x = Math.sin(t * 0.03) * 0.08 * m;
+    this.netCam.position.x = Math.sin(t * 0.05) * 0.6 * m;
+    this.netCam.position.y = Math.cos(t * 0.04) * 0.4 * m;
     this.netCam.lookAt(0, 0, -10);
 
     // Performance mode: render the background every other frame.

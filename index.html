@@ -68,6 +68,16 @@
       background: #4b6; box-shadow: 0 0 8px 1px #4b6; opacity: 0.6;
     }
     @media (max-width: 720px) { .docks { display: none; } }
+
+    /* Performance-mode toggle. */
+    .perf {
+      bottom: 18px; left: 18px; top: auto; pointer-events: auto; cursor: pointer;
+      font: 11px/1 "Inter", system-ui, sans-serif; letter-spacing: 0.06em;
+      color: #9fb3c8; padding: 8px 12px; border-radius: 999px;
+      background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+      backdrop-filter: blur(6px); text-transform: uppercase;
+    }
+    .perf.on { color: var(--accent); border-color: var(--accent); }
   </style>
 </head>
 <body>
@@ -79,6 +89,8 @@
     <div class="brand">Aether<span class="dot">.</span></div>
     <div class="tagline">your cosmic copilot</div>
   </div>
+
+  <button class="hud perf" id="perf-toggle" title="Performance mode (P)">⚡ perf</button>
 
   <!-- Optional dock targets. An agent marked working settles near the panel
        whose data-agent matches its id (else it just pulses in orbit). -->

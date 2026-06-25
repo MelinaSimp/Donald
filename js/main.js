@@ -7,6 +7,7 @@ import { RingSystem } from './rings.js';
 import { Effects } from './effects.js';
 import { AGENTS } from './agents.js';
 import { buildStates } from './states.js';
+import { Transport } from './transport.js';
 import { prefersReducedMotion } from './util.js';
 
 const _wv = new THREE.Vector3();
@@ -24,9 +25,13 @@ export class CosmicInterface {
     this.states = buildStates(ACCENT);
     this.state = 'idle';
     this.clock = new THREE.Clock();
+    this.time = 0;          // manual accumulator → pause/resume can't jump phase
+    this.paused = false;
+    this.perfMode = false;
     this.reducedMotion = prefersReducedMotion();
 
     this.background = new Background(this.root); // furthest-back layer
+    this.background.reducedMotion = this.reducedMotion;
     this._initOrbLayer();
     this.audio = new AudioReactor();
 
@@ -49,7 +54,49 @@ export class CosmicInterface {
     addEventListener('resize', this._onResize);
     this._resize();
 
+    // Battery/focus: pause when the tab is hidden, resume cleanly.
+    this._onVisibility = () => (document.hidden ? this.pause() : this.resume());
+    document.addEventListener('visibilitychange', this._onVisibility);
+
+    // Gracefully survive a lost WebGL context (matters on iOS).
+    this.renderer.domElement.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault(); this.pause();
+    });
+    this.renderer.domElement.addEventListener('webglcontextrestored', () => this.resume());
+
+    this._initControls();
+
     this._tick = this._tick.bind(this);
+    this.renderer.setAnimationLoop(this._tick);
+  }
+
+  _initControls() {
+    // Keyboard: P = performance mode. Plus a small on-screen toggle.
+    addEventListener('keydown', (e) => {
+      if (e.key === 'p' || e.key === 'P') this.setPerformanceMode(!this.perfMode);
+    });
+    const btn = document.getElementById('perf-toggle');
+    if (btn) btn.addEventListener('click', () => this.setPerformanceMode(!this.perfMode));
+    this._perfBtn = btn;
+  }
+
+  setPerformanceMode(on) {
+    this.perfMode = on;
+    this.background.setPerformanceMode(on);
+    if (this._perfBtn) this._perfBtn.classList.toggle('on', on);
+  }
+
+  // Pause/resume the whole loop. Used for tab-hide and full-screen panels.
+  pause() {
+    if (this.paused) return;
+    this.paused = true;
+    this.renderer.setAnimationLoop(null);
+  }
+
+  resume() {
+    if (!this.paused) return;
+    this.paused = false;
+    this.clock.getDelta(); // discard the gap so dt stays small on the first frame
     this.renderer.setAnimationLoop(this._tick);
   }
 
@@ -136,7 +183,8 @@ export class CosmicInterface {
 
   _tick() {
     const dt = Math.min(this.clock.getDelta(), 0.05);
-    const t = this.clock.elapsedTime;
+    this.time += dt;       // never jumps, even after a long pause
+    const t = this.time;
 
     const target = this.states[this.state];
 
@@ -169,12 +217,21 @@ export class CosmicInterface {
     this.constellation.update(dt, t, { width: innerWidth, height: innerHeight });
 
     this.renderer.render(this.scene, this.camera);
+
+    // Drive the demo/transport on the same clock.
+    if (this.transport) this.transport.update(dt);
   }
 
   dispose() {
     removeEventListener('resize', this._onResize);
+    document.removeEventListener('visibilitychange', this._onVisibility);
     this.renderer.setAnimationLoop(null);
+    if (this.transport) this.transport.dispose();
+    this.constellation.dispose();
+    this.rings.dispose();
+    this.effects.dispose();
     this.orb.dispose();
+    this.background.dispose();
     this.renderer.dispose();
   }
 }
@@ -187,7 +244,14 @@ window.setState = (n) => app.setState(n);
 window.dispatch = (id) => app.dispatch(id);
 window.setWorking = (id, on) => app.setWorking(id, on);
 window.addAgent = (def) => app.addAgent(def);
+window.setPerformanceMode = (on) => app.setPerformanceMode(on);
 // Real audio must be unlocked by a user gesture (and resumed for iOS).
 window.enableMic = () => app.audio.attachMic().then(() => app.audio.resume());
 window.attachAudio = (el, opts) => app.audio.attachElement(el, opts);
 addEventListener('pointerdown', () => app.audio.resume(), { passive: true });
+
+// --- Transport ---------------------------------------------------------------
+// Connect a WebSocket if one is configured (window.AETHER_WS), otherwise run a
+// demo driver that cycles the scene so it's alive without a backend.
+app.transport = new Transport(app, { url: window.AETHER_WS });
+window.aetherEvent = (msg) => app.transport.handle(msg); // route an event by hand
