@@ -258,8 +258,7 @@ def test_tier5_heartbeat_surfaces_and_holds():
         loud_seen = []
         hb = Heartbeat(config, reminders, inbox, audit, on_loud=loud_seen.append)
 
-        hb.tick()  # first tick initializes schedule (every_seconds=0 -> due now next tick)
-        hb.tick()  # fires the check
+        hb.tick()  # new check fires on the first tick
         assert any("call mom" in n["text"] for n in inbox.pending())
         before = len(inbox.pending())
         hb.tick()  # should NOT re-surface the same reminder

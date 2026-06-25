@@ -166,10 +166,10 @@ class Heartbeat:
         due_times: dict[str, float] = self.state.setdefault("next_due", {})
         check_state: dict[str, Any] = self.state.setdefault("checks", {})
         for check in self.checks:
-            next_due = due_times.get(check.name)
-            if next_due is None:
-                due_times[check.name] = now + check.every_seconds  # don't fire all on first boot
-                continue
+            # New checks (no persisted state) fire on this first tick. On a
+            # *restart* the persisted next_due governs, so we never refire a
+            # backlog — and per-check surfaced-tracking stops duplicate notices.
+            next_due = due_times.get(check.name, now)
             if now < next_due:
                 continue
             ctx = HeartbeatContext(self.config, self.reminders, self.inbox,
