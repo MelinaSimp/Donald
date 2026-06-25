@@ -9,6 +9,15 @@ codebase. This package provides:
 
 from __future__ import annotations
 
+from .checker import DriftFinding, check_drift
 from .parser import AutoBlock, SelfKnowledgeDoc
+from .render import refresh_file, render_file
 
-__all__ = ["AutoBlock", "SelfKnowledgeDoc"]
+__all__ = [
+    "AutoBlock",
+    "SelfKnowledgeDoc",
+    "DriftFinding",
+    "check_drift",
+    "render_file",
+    "refresh_file",
+]

@@ -35,6 +35,14 @@ _STRAY_RE = re.compile(r"<!--[ \t]*AUTO-(?:START|END):[ \t]*[\w-]+[ \t]*-->")
 
 
 @dataclass
+class HandwrittenSpan:
+    """A run of hand-written text plus its 1-based starting line in the doc."""
+
+    text: str
+    start_line: int
+
+
+@dataclass
 class AutoBlock:
     """One AUTO block: its name plus the exact marker/body substrings."""
 
@@ -103,6 +111,22 @@ class SelfKnowledgeDoc:
 
     def block_names(self) -> List[str]:
         return [s.name for s in self._segments if isinstance(s, AutoBlock)]
+
+    def iter_segments(self) -> List[Union[str, AutoBlock]]:
+        """Return the ordered segments (literals and AutoBlocks)."""
+        return list(self._segments)
+
+    def handwritten_spans(self) -> List["HandwrittenSpan"]:
+        """Return hand-written (non-AUTO) text spans with 1-based start lines."""
+        spans: List[HandwrittenSpan] = []
+        line = 1
+        for seg in self._segments:
+            if isinstance(seg, AutoBlock):
+                line += seg.render().count("\n")
+            else:
+                spans.append(HandwrittenSpan(text=seg, start_line=line))
+                line += seg.count("\n")
+        return spans
 
     def _block(self, name: str) -> AutoBlock:
         for seg in self._segments:
