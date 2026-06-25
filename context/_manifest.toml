@@ -1,0 +1,8 @@
+# Context loaded into Trillion's system prompt.
+#
+# Keep the total always-loaded context under ~3000 tokens. Each entry is a
+# path relative to this `context/` directory.
+
+always_load = [
+    "donald-supabase-schema.md",
+]
