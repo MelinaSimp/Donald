@@ -3,9 +3,13 @@ import { Orb } from './orb.js';
 import { Background } from './background.js';
 import { AudioReactor } from './audio.js';
 import { Constellation } from './constellation.js';
+import { RingSystem } from './rings.js';
+import { Effects } from './effects.js';
 import { AGENTS } from './agents.js';
 import { buildStates } from './states.js';
 import { prefersReducedMotion } from './util.js';
+
+const _wv = new THREE.Vector3();
 
 // ---------------------------------------------------------------------------
 // Orchestrator. Builds the layers and runs the single animation loop that
@@ -31,6 +35,11 @@ export class CosmicInterface {
     this.constellation = new Constellation(this.scene, this.camera, this.labelRoot);
     this.constellation.setReducedMotion(this.reducedMotion);
     for (const a of AGENTS) this.constellation.add(a);
+
+    // Tier 5 — reactions.
+    this.rings = new RingSystem(this.scene);
+    this.effects = new Effects(this.scene);
+    this._pulseTimer = 0;
 
     // A live, eased copy of the current mood so cross-fades between states are
     // smooth even if the target flips mid-transition.
@@ -82,6 +91,41 @@ export class CosmicInterface {
     this.state = name;
   }
 
+  // --- Tier 5 public reaction API (also exposed on window) ---
+
+  // Fire a dispatch beam + flare + sonar ping at an agent.
+  dispatch(agentId) {
+    const node = this.constellation.get(agentId);
+    if (node) this.effects.dispatch(node);
+  }
+
+  // Mark an agent working: steady pulse, and dock near its panel if one exists
+  // (an element with [data-agent="<id>"]); otherwise it just pulses in orbit.
+  setWorking(agentId, on) {
+    this.constellation.setWorking(agentId, on);
+    const panel = document.querySelector(`[data-agent="${CSS.escape(agentId)}"]`);
+    if (on && panel) {
+      this.constellation.dock(agentId, () => this._panelToWorld(panel));
+    } else if (!on) {
+      this.constellation.undock(agentId);
+    }
+  }
+
+  // Add a brand-new agent at runtime (avatar + label generated on the fly).
+  addAgent(def) { return this.constellation.add(def); }
+
+  // Project a panel's on-screen center to a world point on the orb's z-plane.
+  _panelToWorld(panel) {
+    const r = panel.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) return null;
+    const ndcX = ((r.left + r.width / 2) / innerWidth) * 2 - 1;
+    const ndcY = -(((r.top + r.height / 2) / innerHeight) * 2 - 1);
+    _wv.set(ndcX, ndcY, 0.5).unproject(this.camera);
+    _wv.sub(this.camera.position).normalize();
+    const tdist = (0 - this.camera.position.z) / _wv.z;
+    return _wv.multiplyScalar(tdist).add(this.camera.position);
+  }
+
   _resize() {
     const w = innerWidth, h = innerHeight;
     this.renderer.setSize(w, h, false);
@@ -108,7 +152,20 @@ export class CosmicInterface {
     // Background reads the orb's live color so its glow tracks the orb.
     this.background.update(dt, t, target.bgGlow, this.orb.uniforms.uColor.value);
 
-    // Constellation orbits + label tracking.
+    // Processing rings (the helix) fade in/out with the processing state.
+    this.rings.update(dt, t, target.rings);
+
+    // Faint pulse waves ripple from the orb periodically while it's thinking.
+    if (target.rings) {
+      this._pulseTimer -= dt;
+      if (this._pulseTimer <= 0) {
+        this._pulseTimer = 2.6;
+        this.effects.pulse(this.orb.uniforms.uColor.value.clone());
+      }
+    }
+
+    // Transient effects (beams, pings), then the constellation + labels.
+    this.effects.update(dt);
     this.constellation.update(dt, t, { width: innerWidth, height: innerHeight });
 
     this.renderer.render(this.scene, this.camera);
@@ -127,6 +184,9 @@ const root = document.getElementById('scene');
 const app = new CosmicInterface(root);
 window.cosmic = app;
 window.setState = (n) => app.setState(n);
+window.dispatch = (id) => app.dispatch(id);
+window.setWorking = (id, on) => app.setWorking(id, on);
+window.addAgent = (def) => app.addAgent(def);
 // Real audio must be unlocked by a user gesture (and resumed for iOS).
 window.enableMic = () => app.audio.attachMic().then(() => app.audio.resume());
 window.attachAudio = (el, opts) => app.audio.attachElement(el, opts);

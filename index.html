@@ -50,6 +50,24 @@
     .brand { font-weight: 600; letter-spacing: 0.04em; font-size: 18px; }
     .brand .dot { color: var(--accent); }
     .tagline { font-size: 12px; opacity: 0.55; margin-top: 2px; letter-spacing: 0.02em; }
+
+    /* Dock panels — faint cards on the right edge that agents settle beside. */
+    .docks {
+      top: 50%; right: 26px; transform: translateY(-50%);
+      display: flex; flex-direction: column; gap: 14px;
+    }
+    .docks .panel {
+      min-width: 132px; padding: 12px 14px; border-radius: 12px;
+      font-size: 12.5px; letter-spacing: 0.03em; color: #cfe;
+      background: rgba(255,255,255,0.035);
+      border: 1px solid rgba(255,255,255,0.07);
+      backdrop-filter: blur(6px); display: flex; align-items: center; gap: 9px;
+    }
+    .docks .panel .p-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #4b6; box-shadow: 0 0 8px 1px #4b6; opacity: 0.6;
+    }
+    @media (max-width: 720px) { .docks { display: none; } }
   </style>
 </head>
 <body>
@@ -60,6 +78,14 @@
   <div class="hud top">
     <div class="brand">Aether<span class="dot">.</span></div>
     <div class="tagline">your cosmic copilot</div>
+  </div>
+
+  <!-- Optional dock targets. An agent marked working settles near the panel
+       whose data-agent matches its id (else it just pulses in orbit). -->
+  <div class="hud docks" id="docks">
+    <div class="panel" data-agent="scout"><span class="p-dot"></span>Scout</div>
+    <div class="panel" data-agent="forge"><span class="p-dot"></span>Forge</div>
+    <div class="panel" data-agent="aegis"><span class="p-dot"></span>Aegis</div>
   </div>
 
   <!--
