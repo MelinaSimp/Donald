@@ -1,0 +1,5 @@
+node_modules/
+scratchpad/
+*.log
+
+scratchpad_shot.mjs

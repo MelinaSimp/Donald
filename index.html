@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Aether — your cosmic copilot</title>
+  <style>
+    :root { --accent: #ff8a3d; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+    body { font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif; color: #fff; }
+
+    /* The three stacked, full-screen layers. */
+    #scene { position: fixed; inset: 0; }
+    .layer { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .bg-layer  { z-index: 1; }
+    .orb-layer { z-index: 2; }   /* transparent, composites over the background */
+    .label-layer { z-index: 3; pointer-events: none; } /* DOM labels (Tier 4) */
+
+    /* Header / identity. */
+    .hud { position: fixed; z-index: 4; pointer-events: none; }
+    .hud.top { top: 0; left: 0; right: 0; padding: 22px 26px; }
+    .brand { font-weight: 600; letter-spacing: 0.04em; font-size: 18px; }
+    .brand .dot { color: var(--accent); }
+    .tagline { font-size: 12px; opacity: 0.55; margin-top: 2px; letter-spacing: 0.02em; }
+  </style>
+</head>
+<body>
+  <div id="scene">
+    <div class="label-layer" id="labels"></div>
+  </div>
+
+  <div class="hud top">
+    <div class="brand">Aether<span class="dot">.</span></div>
+    <div class="tagline">your cosmic copilot</div>
+  </div>
+
+  <!--
+    three.js is vendored locally (js/lib/three.module.js) so the scene works
+    offline and doesn't depend on a CDN being reachable. No build step / no
+    bundler — it's just a static ES module. To use a CDN instead, swap the
+    path below for: "https://unpkg.com/three@0.160.0/build/three.module.js"
+  -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./js/lib/three.module.js"
+    }
+  }
+  </script>
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>
