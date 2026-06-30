@@ -1,3 +1,6 @@
+pytest==7.4.3
+pytest-asyncio==0.21.1
+httpx==0.25.2
 # Dev/test dependencies. The library itself only needs requirements.txt.
 -r requirements.txt
 pytest>=8
