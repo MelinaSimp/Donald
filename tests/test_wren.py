@@ -154,6 +154,27 @@ def test_tier4_memory_persists():
     print("✓ Tier 4: memory persists across restarts")
 
 
+def test_tier4_selective_memory_loading():
+    with tempfile.TemporaryDirectory() as d:
+        tmp = Path(d)
+        # full_below=2: with 2 facts, load all regardless of query.
+        small = Memory(tmp / "m.json", full_below=2, max_facts=2)
+        small.add("Likes tea")
+        small.add("Has a dog named Rex")
+        assert "tea" in small.render("anything") and "Rex" in small.render("anything")
+
+        # Above the threshold, only the most relevant fact loads (max_facts=1).
+        big = Memory(tmp / "m2.json", full_below=2, max_facts=1)
+        big.add("Lives in Berlin")
+        big.add("Allergic to peanuts")
+        big.add("Drives a blue car")
+        out = big.render("what kind of car do they drive?")
+        assert "blue car" in out and "Berlin" not in out and "peanuts" not in out
+        # Never empty even with no overlap (falls back to recent facts).
+        assert big.render("xyzzy quux").strip()
+    print("✓ Tier 4: memory loads all when small, selectively when it grows")
+
+
 def test_tier4_memory_in_system_prompt():
     with tempfile.TemporaryDirectory() as d:
         tmp = Path(d)

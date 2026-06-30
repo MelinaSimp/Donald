@@ -29,7 +29,11 @@ class App:
 
 def build_app(config: Config | None = None, gate=console_gate) -> App:
     config = config or Config.load()
-    memory = Memory(config.resolve_path("memory.path", "data/memory.json"))
+    memory = Memory(
+        config.resolve_path("memory.path", "data/memory.json"),
+        full_below=config.get("memory.full_below", 20),
+        max_facts=config.get("memory.max_facts", 12),
+    )
     inbox = Inbox(config.resolve_path("heartbeat.inbox_path", "data/inbox.json"))
     audit = Audit(config.resolve_path("safety.audit_log", "data/audit.log"))
 

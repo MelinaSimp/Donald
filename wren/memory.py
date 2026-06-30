@@ -14,16 +14,25 @@ Honesty rules baked in:
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from .store import load_json, save_json
 
+_WORD = re.compile(r"[a-z0-9]+")
+
 
 class Memory:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, full_below: int = 9999, max_facts: int = 9999):
         self.path = path
+        # When the store has <= full_below facts, load them all (early on,
+        # loading everything is fine). Above that, load only the max_facts most
+        # relevant to the current turn — the system prompt stays lean as memory
+        # grows (Tier 4).
+        self.full_below = full_below
+        self.max_facts = max_facts
 
     def _all(self) -> list[dict[str, Any]]:
         return load_json(self.path, [])
@@ -63,11 +72,22 @@ class Memory:
         return True
 
     def render(self, query: str | None = None) -> str:
-        """Facts as a bullet list for the system prompt. Loads everything for
-        now; the `query` hook is where selective loading goes once memory grows
-        (Tier 4: don't dump the whole store into every prompt forever)."""
+        """Facts as a bullet list for the system prompt. Below full_below facts,
+        load them all. Above it, load only the max_facts most relevant to the
+        current turn (word overlap with `query`), so the prompt stays lean as
+        memory grows. If nothing overlaps, fall back to the most recent facts so
+        the prompt is never empty (Tier 4)."""
         items = self._all()
-        if query:
-            q = query.lower()
-            items = [i for i in items if q in i["text"].lower()] or items
-        return "\n".join(f"- (#{i['id']}) {i['text']}" for i in items)
+        if not items:
+            return ""
+        if query is None or len(items) <= self.full_below:
+            chosen = items
+        else:
+            qwords = set(_WORD.findall(query.lower()))
+
+            def score(it: dict[str, Any]) -> int:
+                return len(qwords & set(_WORD.findall(it["text"].lower())))
+
+            ranked = sorted(items, key=lambda it: (score(it), it["id"]), reverse=True)
+            chosen = sorted(ranked[: self.max_facts], key=lambda it: it["id"])
+        return "\n".join(f"- (#{i['id']}) {i['text']}" for i in chosen)

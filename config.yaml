@@ -48,6 +48,11 @@ email:
 memory:
   # Long-term store (Tier 4). Plain JSON you can open and edit by hand.
   path: data/memory.json
+  # Selective loading as memory grows: with <= full_below facts, load them all;
+  # above that, load only the max_facts most relevant to the current turn so the
+  # system prompt stays lean.
+  full_below: 20
+  max_facts: 12
 
 reminders:
   path: data/reminders.json

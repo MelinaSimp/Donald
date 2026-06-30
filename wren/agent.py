@@ -59,7 +59,15 @@ class Agent:
     def system_prompt(self) -> str:
         parts = [self.persona, _SAFETY_RULES]
         if self.memory is not None:
-            facts = self.memory.render()
+            # Use the latest real user utterance as the relevance query for
+            # selective memory loading (skip tool-result user turns, whose
+            # content is a list rather than a string).
+            query = next(
+                (m["content"] for m in reversed(self.messages)
+                 if m["role"] == "user" and isinstance(m["content"], str)),
+                None,
+            )
+            facts = self.memory.render(query)
             if facts:
                 parts.append(
                     "Here is what you durably remember about the user. Treat it "
