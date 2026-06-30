@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+# NOTE: this repo hosts several independent experiments (security/, donald/,
+# src/trillion/, prism/). A single root pyproject can only describe one package;
+# the previous root file declared [project] twice (invalid TOML), so this is
+# scoped to Prism. Other projects build/run from their own package dirs.
+[project]
+name = "prism-design-agent"
+version = "0.1.0"
+description = "Prism — a head-of-design sub-agent that composes award-quality Next.js mockups."
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+agent = ["anthropic>=0.40"]
+images = ["google-genai>=0.3"]
+serving = ["fastapi>=0.110", "uvicorn>=0.29"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+prism = "prism.cli:main"
+
+[tool.setuptools]
+packages = ["prism"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -1,14 +1,20 @@
-"""Shared test fakes — no network, no API key.
+"""Shared test fakes and fixtures — no network, no API key.
 
 The agent loop is driven by an LLM; tests inject a scripted fake so the loop's
 control flow (bounded iteration, tool dispatch, handoff capture) is exercised
 deterministically without touching the Messages API.
+
+Prism tests use a throwaway project resolvable via PRISM_PROJECTS_BASE.
 """
 
 from __future__ import annotations
 
+import json
 import types
+from pathlib import Path
 from typing import Any, Callable
+
+import pytest
 
 
 def _text_block(text: str):
@@ -62,3 +68,27 @@ class EchoLLM:
 def callable_returning(fn: Callable[..., Any]):
     """Wrap a plain function as an object with a `.complete` attribute."""
     return types.SimpleNamespace(complete=fn)
+
+
+@pytest.fixture
+def project(tmp_path, monkeypatch):
+    """Create a fresh project dir and make Prism resolve `<slug>` to it.
+
+    Uses PRISM_PROJECTS_BASE convention so we never touch the real registry.
+    Returns (slug, root_path).
+    """
+    base = tmp_path / "projects"
+    base.mkdir()
+    slug = "test-app"
+    root = base / slug
+    root.mkdir()
+    # Minimal repo signal for the bootstrap scan.
+    (root / "package.json").write_text(
+        json.dumps({"name": slug, "description": "A test app for Prism.",
+                    "dependencies": {"next": "15.0.0", "react": "19.0.0"}})
+    )
+    (root / "README.md").write_text("# Test App\n\nA delightful test application.\n")
+
+    monkeypatch.setenv("PRISM_PROJECTS_BASE", str(base))
+    monkeypatch.setenv("PRISM_REGISTRY", str(tmp_path / "no-registry.json"))
+    return slug, root

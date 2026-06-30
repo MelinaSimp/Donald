@@ -1,0 +1,22 @@
+# 2.3 - Pre-commit secret scanning (threat T1: keys leaking into history).
+#
+# One-time setup:
+#   uv pip install pre-commit   # or pipx / brew
+#   pre-commit install
+#
+# After that every commit auto-scans staged content; a leaked secret blocks it.
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
