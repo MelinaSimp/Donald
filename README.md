@@ -1,16 +1,30 @@
-# Donald — `agent-security`
+# Donald
+
+A small **monorepo** holding two independent packages that share a branch but
+have no runtime coupling:
+
+| Package | Path | What it is |
+|---|---|---|
+| [`agent-security`](#agent-security-security) | `security/` | Framework-agnostic, dependency-free AI-agent hardening primitives |
+| [`trillion`](#trillion-srctrillion) | `src/trillion/` | Read-only Supabase analytics tool (SELECT-only via a dedicated role) |
+
+Run everything with `pytest` (see [Tests](#tests)).
+
+---
+
+## agent-security (`security/`)
 
 A framework-agnostic, **dependency-free** Python library of the load-bearing
 security primitives an AI-agent codebase needs. Every module is pure standard
 library and returns plain data, so it drops into FastAPI, Flask, Starlette,
 aiohttp, a bare WSGI app, or a CLI without pulling in a web framework.
 
-This repository is the **library only** — there is no agent application here.
-You import these modules into your own agent and wire them at the right seams
+This package is the **library only** — there is no agent application here. You
+import these modules into your own agent and wire them at the right seams
 (your tool router, your auth middleware, your subprocess spawn sites, your
 ingest paths). Each module's docstring shows the wiring.
 
-## Threat model
+### Threat model
 
 | # | Threat | Modules that address it |
 |---|---|---|
@@ -23,7 +37,7 @@ ingest paths). Each module's docstring shows the wiring.
 | T7 | Tool-frequency abuse | `anomaly` |
 | — | Observability / drift | `audit` (the security shield), `killswitch` |
 
-## Modules
+### Modules
 
 | Tier | Module | What it gives you |
 |---|---|---|
@@ -43,7 +57,7 @@ ingest paths). Each module's docstring shows the wiring.
 Plus non-code artifacts: `.pre-commit-config.yaml` + `.gitleaks.toml` (2.3),
 `docs/incident-runbook.md` (3.6), `docs/secrets-inventory.md` (2.4 / 2.5).
 
-## Quick start
+### Quick start
 
 ```python
 from security.log_redact import redact
@@ -77,12 +91,12 @@ dispatcher chaining `killswitch → anomaly → approval → run → redacted lo
 plus the `/api/security/status` shield endpoint and a CSP report sink.
 
 ```bash
-pip install fastapi uvicorn
+pip install -e .[example]
 AGENT_BEARER_TOKEN=dev-token uvicorn examples.fastapi_agent:app --port 8000
 ```
 
 `tests/test_example_fastapi.py` exercises it end-to-end (auto-skips if FastAPI
-isn't installed, so the core suite stays dependency-free).
+isn't installed, so the security suite stays dependency-free).
 
 ### System-prompt rules the gate depends on (1.2)
 
@@ -98,7 +112,7 @@ Teach your LLM, in the system prompt, to:
   with a summary, then re-invoke the original tool with `_confirmed=True`.
   That flag bypasses smart/manual — but **never** the hardline blocklist.
 
-## What is NOT in this library (control-plane / your code)
+### What is NOT in this library (control-plane / your code)
 
 - **Token-scope minimisation (2.4)** and **DB read-only role (2.5)** are done
   in each provider's console / your database. The library exposes them as
@@ -110,27 +124,23 @@ Teach your LLM, in the system prompt, to:
   shield tracks whether you've added it (`csrf_origin_gate`).
 - The library does not store secrets, bind ports, or run a server.
 
-## Tests
-
-```bash
-python -m unittest discover -s tests -v
-# or, if you have pytest:  pytest -q
-```
-
-## Honest status
+### Honest status
 
 This library implements the Tier 1–3 *primitives*. Dropping the files in is not
 "hardened" — you are hardened when each module is **wired at every relevant
 seam** in your agent (every ingest path gated, every spawn site stripped, the
 approval gate in your tool router, the shield endpoint live). Use the audit
 shield (3.5) to measure how much of that wiring is actually in place.
-# Donald — Trillion read-only Supabase integration
+
+---
+
+## trillion (`src/trillion/`)
 
 Bootstrap of the Trillion read-only Supabase tool pattern. Trillion answers
 questions about a Supabase-backed Postgres database by running **read-only**
 SQL through a dedicated `trillion_analytics` role.
 
-## Layout
+### Layout
 
 | Path | Purpose |
 | ---- | ------- |
@@ -143,20 +153,14 @@ SQL through a dedicated `trillion_analytics` role.
 | `context/_manifest.toml` | Which docs load into the system prompt. |
 | `scripts/verify_supabase.py` | Live connection / schema-dump check. |
 
-## Safety model (defense in depth)
+### Safety model (defense in depth)
 
 1. **DB layer:** connect as `trillion_analytics` — SELECT-only grants, short
    `statement_timeout`. Never the `postgres` superuser.
 2. **Tool layer:** `validate_sql()` allows a single SELECT/WITH statement
    only (no writes, no statement chaining); results capped at 1000 rows.
 
-## Develop
-
-```bash
-uv run --extra dev pytest        # run the unit tests
-```
-
-## Add another Supabase project
+### Add another Supabase project
 
 Copy `src/trillion/tools/donald_tool.py` to `<slug>_tool.py`, rename the class
 / tool name / schema-doc reference, register it in `registry.py` behind
@@ -164,7 +168,7 @@ Copy `src/trillion/tools/donald_tool.py` to `<slug>_tool.py`, rename the class
 `context/<slug>-supabase-schema.md`. Don't extract a shared base class until
 the 4th project lands.
 
-## Live verification (requires Doppler + the real Supabase project)
+### Live verification (requires Doppler + the real Supabase project)
 
 ```bash
 doppler run -p trillion -c dev -- \
@@ -175,3 +179,22 @@ Must print `OK:` with the `trillion_analytics` role and a table list before
 the tool is trusted. See the Supabase playbook for the full step-by-step
 (role creation, the IPv4 pooler connection string, Doppler, end-to-end smoke
 test).
+
+---
+
+## Tests
+
+`pytest` runs both suites (the stdlib-unittest security suite and Trillion's
+pytest-asyncio suite):
+
+```bash
+pip install -e .[dev]
+pytest -q
+```
+
+The `security/` suite alone needs no third-party deps and also runs under the
+stdlib runner:
+
+```bash
+python -m unittest discover -s tests -p 'test_[abcehiklrs]*.py'
+```
