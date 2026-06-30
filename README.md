@@ -1,4 +1,48 @@
-# Donald — `agent-security`
+# Donald — voice desktop assistant
+
+You say **"Donald"**, a UI wakes up on your computer, and Donald talks back. You
+ask for things out loud; Donald reasons in his (cocky, comedic) voice and then
+*actually does them* on your machine through his execution engine, **Hermes**.
+The whole point is the feel: you're just talking to your computer and it's
+getting things done.
+
+```
+You ──"Donald, …"──▶  browser UI  ──speech-to-text──▶  DONALD (voice + brain)
+                       (wake word,                          │  reasons in character
+                        STT, TTS,                           │  decides what to do
+                        the orb)   ◀──Donald speaks───┐     ▼
+                                                       │   HERMES (the hands)
+                                                       └──  runs it on THIS computer
+                                                            (shell · apps · URLs),
+                                                            every risky action gated
+```
+
+- **Donald** is the voice and the brain — the personality layers below plus a
+  Claude tool-use loop (`donald/brain.py`).
+- **Hermes** is the hands — an OS-aware execution engine (`donald/hermes/`) that
+  runs shell commands, opens apps, and opens URLs. Every shell command flows
+  through the repo's `security.approval.ApprovalGate`: destructive commands are
+  hard-blocked, risky ones make Donald *ask you out loud* before running.
+- **Voice + UI** live in the browser (`donald/web/`): wake-word detection,
+  speech-to-text, and Donald's spoken voice all use the Web Speech API — no
+  native audio dependencies, works on macOS / Windows / Linux.
+
+### Run the voice assistant
+
+```bash
+pip install -r requirements.txt
+export ANTHROPIC_API_KEY=sk-...
+python -m donald.app          # opens the UI; allow the mic; say "Donald"
+python -m donald.app --dry-run   # Hermes describes actions instead of running them
+```
+
+Use Chrome or Edge for voice (widest Web Speech API support). The server binds
+to `127.0.0.1` only — it's your machine talking to itself. Full design notes:
+[`docs/voice-desktop-assistant.md`](docs/voice-desktop-assistant.md).
+
+---
+
+## The personality engine underneath
 
 A cocky, comedic personality agent — a parody bombast who's the biggest ego in
 any room, with a **personality-persistence layer** that stops the voice from
