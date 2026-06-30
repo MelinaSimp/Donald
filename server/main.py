@@ -2,17 +2,29 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import logging
-import os
+import asyncio
+import json
 from pathlib import Path
 
 from server.config import settings
-from server.db import init_db, create_session, get_cached_tts_text, prune_expired_tts_cache
+from server.db import (
+    init_db,
+    create_session,
+    get_cached_tts_text,
+    save_turn,
+    cache_tts_text,
+    prune_expired_tts_cache,
+)
 from server.auth import require_auth, validate_token
+from server.brain import Brain
+from server.elevenlabs import ElevenLabsTTS
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Donald", debug=settings.debug)
+
+tts_client = ElevenLabsTTS()
 
 # Initialize database on startup
 @app.on_event("startup")
@@ -50,10 +62,13 @@ async def get_tts(turn_id: str, request: Request):
     if not text:
         raise HTTPException(status_code=404, detail="TTS not found or expired")
 
-    # TODO: Call ElevenLabs API to stream MP3
-    # For now, return a placeholder
+    # Synthesize MP3 on-demand (cached text)
+    mp3_bytes = await tts_client.synthesize(text)
+    if not mp3_bytes:
+        raise HTTPException(status_code=500, detail="TTS synthesis failed")
+
     return StreamingResponse(
-        iter([b"placeholder mp3 bytes"]),
+        iter([mp3_bytes]),
         media_type="audio/mpeg",
         headers={
             "Content-Type": "audio/mpeg",
@@ -74,7 +89,11 @@ async def websocket_endpoint(websocket: WebSocket):
     logger.info("WebSocket client connected")
 
     session_id = create_session()
-    logger.info(f"Created session {session_id}")
+    brain = Brain()
+    brain.start_session()
+
+    audio_frames_queue = asyncio.Queue()
+    listening = False
 
     try:
         while True:
@@ -84,17 +103,65 @@ async def websocket_endpoint(websocket: WebSocket):
 
             if message_type == "start_listening":
                 # Client wants to start mic capture
+                listening = True
                 await websocket.send_json({"type": "start_mic"})
 
             elif message_type == "stop_listening":
                 # Client has stopped capturing (VAD or user tap)
-                # TODO: Finalize Deepgram transcript, send back transcript
-                pass
+                listening = False
+
+                # Get final transcript from audio frames (simplified: just accumulate)
+                # In a real impl, we'd finalize the Deepgram stream and get the transcript
+                transcript_text = "Hello, how are you?"  # TODO: Real transcript from Deepgram
+
+                # Save user's turn
+                user_turn_id = save_turn(session_id, "user", transcript_text)
+
+                # Send transcript to PWA
+                await websocket.send_json(
+                    {"type": "transcript", "role": "user", "text": transcript_text}
+                )
+
+                # Processing status
+                await websocket.send_json({"type": "status", "state": "processing"})
+
+                # Call brain for response (streaming)
+                try:
+                    full_response = ""
+
+                    # Stream response from brain
+                    for chunk, _ in brain.stream_response(transcript_text):
+                        full_response += chunk
+                        await websocket.send_json(
+                            {"type": "transcript_delta", "text": chunk}
+                        )
+
+                    # Save assistant's turn
+                    response_turn_id = save_turn(session_id, "assistant", full_response)
+
+                    # Generate TTS and cache it
+                    prune_expired_tts_cache()
+                    mp3_bytes = await tts_client.synthesize(full_response)
+
+                    if mp3_bytes:
+                        cache_tts_text(response_turn_id, full_response, settings.tts_cache_ttl_seconds)
+                        await websocket.send_json({"type": "speak", "turn_id": response_turn_id})
+
+                    # Reset to idle
+                    await websocket.send_json({"type": "status", "state": "idle"})
+
+                except Exception as e:
+                    logger.error(f"Brain error: {e}")
+                    await websocket.send_json(
+                        {"type": "status", "state": "error"}
+                    )
 
             elif message_type == "audio_frame":
                 # Raw audio frame from client (base64-encoded PCM)
-                # TODO: Forward to Deepgram streaming
-                pass
+                if listening:
+                    frame_data = data.get("data")
+                    if frame_data:
+                        await audio_frames_queue.put(frame_data)
 
             else:
                 logger.warning(f"Unknown message type: {message_type}")
