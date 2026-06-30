@@ -88,7 +88,30 @@ safety:
   - spend_money
   - delete_data
   - change_settings
+  - take_screenshot          # Computer control — always ask first
+  - click                    # Computer control — always ask first
+  - type_text                # Computer control — always ask first
+  - press_key                # Computer control — always ask first
+  - navigate_url             # Computer control — always ask first
   audit_log: data/audit.log
   # Kill switch: when true, all proactive/background behaviour is paused. You can
   # still talk to Wren. Toggle with `python -m wren.cli kill` / `unkill`.
   paused: false
+
+# Tier 6+ — MCP Server integrations (OAuth, API keys, etc.)
+mcp_servers:
+  gmail:
+    enabled: false                 # Set to true after OAuth setup
+    oauth_path: ~/.wren_oauth/
+    scopes:
+    - https://www.googleapis.com/auth/gmail.modify
+  calendar:
+    enabled: false                 # Set to true after OAuth setup
+    oauth_path: ~/.wren_oauth/
+    scopes:
+    - https://www.googleapis.com/auth/calendar
+  drive:
+    enabled: false                 # Set to true after OAuth setup
+    oauth_path: ~/.wren_oauth/
+    scopes:
+    - https://www.googleapis.com/auth/drive.readonly

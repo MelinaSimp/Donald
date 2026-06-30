@@ -10,3 +10,13 @@ pyyaml>=6.0
 # google-genai>=0.3   # Tier 5 images (needs GEMINI_API_KEY + billing)
 # fastapi>=0.110      # serve mockups
 # uvicorn>=0.29
+
+# Phase 1: MCP Servers + computer control (Wren Tier 6+)
+httpx>=0.24          # HTTP client for MCP and web requests
+google-auth>=2.25    # Google OAuth for Gmail/Calendar/Drive
+google-auth-oauthlib>=1.1  # OAuth2 support
+google-auth-httplib2>=0.2   # HTTP transport for Google APIs
+google-api-python-client>=2.100  # Gmail, Calendar, Drive APIs
+playwright>=1.40     # Browser automation for computer control
+pyautogui>=0.9       # Screen control (click/type)
+python-dotenv>=1.0   # Environment variable loading
