@@ -7,7 +7,7 @@ import sys
 
 import anthropic
 
-from . import tools
+from . import memory, tools
 from .persona import SYSTEM_PROMPT
 
 MODEL = "claude-opus-4-8"
@@ -21,17 +21,20 @@ BANNER = """\
  |____/ \\___/|_| |_|\\__,_|_|\\__,_|
 
  Donald — your terminal assistant.  Type /help for commands, /exit to leave.
- Tools: read_file, write_file, run_shell, web_search (writes & shell ask first).
+ Tools: read_file, write_file, run_shell, web_search, remember (writes & shell ask first).
 """
 
 HELP = """\
 Commands:
   /help    Show this help
-  /reset   Forget the conversation and start fresh
+  /reset   Forget the current conversation and start fresh
+  /memory  Show what Donald remembers across sessions
+  /forget  Wipe Donald's long-term memory
   /exit    Quit (Ctrl-D or Ctrl-C also work)
 
 Anything else you type is sent to Donald. He can read files, write files, run
-shell commands, and search the web — he'll ask before writing or running shell.
+shell commands, search the web, and remember durable facts about you between
+sessions — he'll ask before writing or running shell.
 """
 
 
@@ -79,14 +82,14 @@ def _run_tool_calls(blocks: list) -> list[dict]:
     return results
 
 
-def _agent_turn(client: anthropic.Anthropic, messages: list[dict]) -> None:
+def _agent_turn(client: anthropic.Anthropic, messages: list[dict], system: str) -> None:
     """Run one full turn: stream replies and loop through any tool use."""
     print("Donald: ", end="", flush=True)
     while True:
         with client.messages.stream(
             model=MODEL,
             max_tokens=MAX_TOKENS,
-            system=SYSTEM_PROMPT,
+            system=system,
             tools=tools.ALL_TOOLS,
             messages=messages,
         ) as stream:
@@ -110,6 +113,9 @@ def main() -> None:
     """Run the interactive loop."""
     client = _build_client()
     messages: list[dict] = []
+    # Load remembered facts once at startup, the way a person reviews their
+    # notes before getting to work. New memories apply next session.
+    system = SYSTEM_PROMPT + memory.block()
     print(BANNER)
 
     while True:
@@ -132,11 +138,20 @@ def main() -> None:
             messages.clear()
             print("(conversation cleared)\n")
             continue
+        if user_input == "/memory":
+            current = memory.load().strip()
+            print(f"\n{current}\n" if current else "(nothing remembered yet)\n")
+            continue
+        if user_input == "/forget":
+            had = memory.clear()
+            system = SYSTEM_PROMPT  # this session stops referencing the old notes
+            print("(memory wiped)\n" if had else "(nothing to forget)\n")
+            continue
 
         checkpoint = len(messages)  # roll back to here if the turn fails
         messages.append({"role": "user", "content": user_input})
         try:
-            _agent_turn(client, messages)
+            _agent_turn(client, messages, system)
             print()
         except anthropic.APIStatusError as exc:
             del messages[checkpoint:]  # drop the failed turn so history stays valid

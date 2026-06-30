@@ -16,6 +16,8 @@ from __future__ import annotations
 import pathlib
 import subprocess
 
+from . import memory
+
 MAX_OUTPUT_CHARS = 100_000
 SHELL_TIMEOUT_S = 60
 
@@ -66,6 +68,26 @@ CUSTOM_TOOLS = [
         },
     },
     {
+        "name": "remember",
+        "description": (
+            "Save a durable fact to long-term memory so you'll recall it in "
+            "future sessions. Use for stable, useful things — the operator's "
+            "name, preferences, ongoing projects, conventions. Not for "
+            "ephemeral chatter. Phrase each note as a standalone fact."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "note": {
+                    "type": "string",
+                    "description": "A single durable fact, phrased to stand on its own.",
+                }
+            },
+            "required": ["note"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "run_shell",
         "description": (
             "Run a shell command in the working directory and return its "
@@ -101,6 +123,8 @@ def describe(name: str, args: dict) -> str:
         return f"write {args.get('path')} ({len(content)} chars)"
     if name == "run_shell":
         return f"run: {args.get('command')}"
+    if name == "remember":
+        return f"remember: {args.get('note')}"
     return f"{name} {args}"
 
 
@@ -134,6 +158,10 @@ def _write_file(args: dict) -> tuple[str, bool]:
     return f"Wrote {len(content)} chars to {args['path']}", False
 
 
+def _remember(args: dict) -> tuple[str, bool]:
+    return memory.remember(args["note"]), False
+
+
 def _run_shell(args: dict) -> tuple[str, bool]:
     try:
         proc = subprocess.run(
@@ -155,6 +183,7 @@ _EXECUTORS = {
     "read_file": _read_file,
     "write_file": _write_file,
     "run_shell": _run_shell,
+    "remember": _remember,
 }
 
 
