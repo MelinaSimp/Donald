@@ -27,26 +27,35 @@ You ──"Donald, …"──▶  browser UI  ──speech-to-text──▶  DON
   speech-to-text, and Donald's spoken voice all use the Web Speech API — no
   native audio dependencies, works on macOS / Windows / Linux.
 
-### Run the voice assistant
+### Run it (one command)
 
 ```bash
-pip install -r requirements.txt
-export ANTHROPIC_API_KEY=sk-...
-python -m donald.app          # opens the UI; allow the mic; say "Donald"
-python -m donald.app --dry-run   # Hermes describes actions instead of running them
+git clone -b claude/voice-desktop-assistant-7yf2vo https://github.com/MelinaSimp/Donald.git
+cd Donald
+cp .env.example .env          # then paste your real ANTHROPIC_API_KEY into .env
+./run.sh                      # sets up everything, opens the UI
 ```
 
-Use Chrome or Edge for voice (widest Web Speech API support). The server binds
-to `127.0.0.1` only — it's your machine talking to itself.
+`run.sh` creates the virtualenv, installs deps, loads your key from `.env`, and
+starts Donald. The UI opens — click **"Wake Donald"**, allow the mic, and say
+**"Donald"**. Use Chrome or Edge (widest Web Speech API support). The server
+binds to `127.0.0.1` only — it's your machine talking to itself.
 
-**Hands-free, from anywhere** — run the always-on wake listener so you don't
-even open the page first: say "Donald" and it launches the UI, armed and
-listening.
+**Hands-free, from anywhere:**
 
 ```bash
-pip install vosk sounddevice   # offline wake word; macOS: brew install portaudio
-# download vosk-model-small-en-us-0.15 → unzip to ./model
-python -m donald.listener      # listens in the background; say "Donald"
+./run.sh --listen
+```
+
+This also starts the always-on wake listener (installing the offline voice deps
++ a small speech model on first run). Now you don't even open the page — just
+say **"Donald"** from anywhere and the UI launches itself, armed and listening.
+
+Manual / advanced invocation:
+
+```bash
+python -m donald.app --dry-run   # Hermes describes actions instead of running them
+python -m donald.listener        # the wake listener on its own
 ```
 
 Full design notes (incl. start-at-login on macOS):
