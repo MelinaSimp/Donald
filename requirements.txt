@@ -1,5 +1,7 @@
-# Shared across the experiments living in this repo.
-anthropic>=0.40.0
+# The orchestration layer targets a current Anthropic SDK (adaptive thinking,
+# the effort parameter, output_config). Upgrade with `pip install -U anthropic`
+# if a kwarg is rejected.
+anthropic>=0.70
 pytest>=8.0.0
 
 # Prism (head-of-design agent) core:
