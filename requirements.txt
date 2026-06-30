@@ -3,3 +3,15 @@
 #   pip install -e '.[voice]'   # + spoken replies / input
 #   pip install -e '.[dev]'     # + pytest
 anthropic>=0.40
+# The orchestration layer targets a current Anthropic SDK (adaptive thinking,
+# the effort parameter, output_config). Upgrade with `pip install -U anthropic`
+# if a kwarg is rejected.
+anthropic>=0.70
+pytest>=8.0.0
+
+# Prism (head-of-design agent) core:
+pyyaml>=6.0
+# Prism optional live integrations (install as needed):
+# google-genai>=0.3   # Tier 5 images (needs GEMINI_API_KEY + billing)
+# fastapi>=0.110      # serve mockups
+# uvicorn>=0.29
