@@ -2,51 +2,43 @@
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
+# This repository is a small monorepo holding two independent packages that
+# landed on the same branch:
+#   * security/      -- agent-security: dependency-free hardening primitives
+#   * src/trillion/  -- trillion: read-only Supabase analytics tool
+# They share one distribution + test config but have no runtime coupling.
 [project]
-name = "agent-security"
+name = "donald"
 version = "0.1.0"
-description = "Framework-agnostic, dependency-free security hardening primitives for AI-agent codebases."
+description = "Monorepo: agent-security hardening library + trillion read-only Supabase tool."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 license = { text = "MIT" }
-keywords = ["security", "llm", "agent", "prompt-injection", "hardening"]
-# Intentionally zero runtime dependencies: the library is pure standard
-# library so it drops into any stack without a dependency negotiation.
+keywords = ["security", "llm", "agent", "prompt-injection", "hardening", "supabase"]
+# Base install is dependency-free (the security library is pure stdlib).
+# Trillion's runtime dep lives under the [trillion] extra so security users
+# never pull it in.
 dependencies = []
 
 [project.optional-dependencies]
-# Tooling the CVE scanner shells out to (not imported); install where you run scans.
+# Tooling the CVE scanner shells out to (not imported); install where you scan.
 scan = ["pip-audit"]
-dev = ["pytest"]
+# Trillion's async Postgres driver.
+trillion = ["asyncpg>=0.29"]
+# The FastAPI worked example under examples/.
+example = ["fastapi", "uvicorn"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
 
 [tool.setuptools]
-packages = ["security"]
+packages = ["security", "trillion", "trillion.tools"]
+
+[tool.setuptools.package-dir]
+security = "security"
+trillion = "src/trillion"
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-[project]
-name = "trillion"
-version = "0.1.0"
-description = "Trillion — voice analytics over read-only Supabase Postgres databases."
-requires-python = ">=3.11"
-dependencies = [
-    "asyncpg>=0.29",
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-    "pytest-asyncio>=0.23",
-]
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/trillion"]
-
-[tool.pytest.ini_options]
+# pytest is the canonical runner for the whole monorepo: it runs both the
+# stdlib-unittest security suite and Trillion's pytest-asyncio suite.
 asyncio_mode = "auto"
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
