@@ -23,7 +23,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from .agent import Agent, AgentManifest
 from .confirmation import Approver
@@ -207,17 +207,29 @@ class ManifestStore:
         )
 
 
+@runtime_checkable
+class Syncable(Protocol):
+    """Anything whose roster can be reconciled to a manifest set.
+
+    Both `AgentRuntime` (which also maintains dispatch tools) and `Orchestrator`
+    (which routes over the roster) satisfy this, so a watcher can drive either.
+    """
+
+    def sync(self, manifests: dict[str, AgentManifest]) -> "ChangeSet": ...
+
+
 class ManifestWatcher:
-    """Drives hot-reload: when the store changes, sync the runtime.
+    """Drives hot-reload: when the store changes, sync the target.
 
     `poll()` is the change signal. Call it on a file-watch event (inotify /
     `watchdog`) or on an interval; it reloads and applies a diff only when the
-    directory's fingerprint actually changed.
+    directory's fingerprint actually changed. The target is anything `Syncable`
+    — an `AgentRuntime` or an `Orchestrator`.
     """
 
-    def __init__(self, store: ManifestStore, runtime: AgentRuntime) -> None:
+    def __init__(self, store: ManifestStore, target: Syncable) -> None:
         self._store = store
-        self._runtime = runtime
+        self._target = target
         self._fingerprint: tuple | None = None
 
     @property
@@ -230,4 +242,4 @@ class ManifestWatcher:
         if fingerprint == self._fingerprint:
             return None
         self._fingerprint = fingerprint
-        return self._runtime.sync(self._store.load())
+        return self._target.sync(self._store.load())

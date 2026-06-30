@@ -131,6 +131,7 @@ python demo_isolation.py
 python demo_confirm.py
 python demo_handoff.py
 python demo_runtime.py
+python demo_live_roster.py   # end-to-end: routing over a hot-reloaded roster
 
 # Live (needs ANTHROPIC_API_KEY):
 export ANTHROPIC_API_KEY=sk-ant-...
@@ -169,6 +170,10 @@ pytest
   dynamic agents safe to run — a bad agent (or a bad manifest) fails in its box.
 - **Confirmation gates** (Tier 4) and **handoff approvals** (Tier 5) are the same
   idea at two levels: nothing consequential happens without a human yes.
+- **Routing + hot-reload meet** in a hot-reloadable conductor: point a
+  `ManifestWatcher` at the `Orchestrator` and its routing roster reloads from
+  disk live (`demo_live_roster.py`). Dispatch still flows through the conductor,
+  never agent-to-agent — Tier 5's no-silent-chaining rule holds.
 
 ## Module map
 

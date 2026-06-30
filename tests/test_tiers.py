@@ -278,3 +278,79 @@ def test_serve_loop_applies_changes(tmp_path):
     # Bounded loop (iterations + zero interval) so the test terminates.
     serve(watcher, interval=0, on_change=seen.append, iterations=1)
     assert "engineer" in runtime.roster() and seen and seen[0].added == ["engineer"]
+
+
+# --- Tier 1 + Tier 6: hot-reloadable conductor ------------------------------
+
+class _RoutingLLM:
+    def __init__(self):
+        self.target = "engineer"
+
+    def decide(self, **_kwargs):
+        import types
+        data = {"reasoning": "r", "kind": "dispatch", "question": "",
+                "plan": [{"agent": self.target, "task": "t"}]}
+        return types.SimpleNamespace(
+            content=[types.SimpleNamespace(type="text", text=json.dumps(data))],
+            stop_reason="end_turn",
+        )
+
+    def complete(self, *, model, messages, **_kwargs):
+        import types
+        return types.SimpleNamespace(
+            content=[types.SimpleNamespace(type="text", text="ok")],
+            stop_reason="end_turn",
+        )
+
+
+def test_conductor_sync_adds_and_removes(tmp_path):
+    llm = _RoutingLLM()
+    conductor = Orchestrator(build_default_registry(), llm=llm)
+    _write(tmp_path, "engineer", allowed_tools=["calculator"])
+    watcher = ManifestWatcher(ManifestStore(tmp_path), conductor)
+
+    watcher.poll()
+    assert conductor.roster() == ["engineer"]
+
+    _write(tmp_path, "designer")
+    change = watcher.poll()
+    assert "designer" in change.added and "designer" in conductor.roster()
+    assert "designer" in conductor.routing_policy()
+
+    _write(tmp_path, "designer", active=False)
+    change = watcher.poll()
+    assert "designer" in change.removed and "designer" not in conductor.roster()
+
+
+def test_conductor_routes_to_hot_added_agent(tmp_path):
+    llm = _RoutingLLM()
+    conductor = Orchestrator(build_default_registry(), llm=llm)
+    _write(tmp_path, "designer")
+    ManifestWatcher(ManifestStore(tmp_path), conductor).poll()
+
+    llm.target = "designer"
+    decision, results = conductor.dispatch("design it")
+    assert decision.kind == "dispatch" and results[0].agent == "designer"
+
+
+def test_conductor_rejects_retired_agent(tmp_path):
+    llm = _RoutingLLM()
+    conductor = Orchestrator(build_default_registry(), llm=llm)
+    _write(tmp_path, "designer")
+    watcher = ManifestWatcher(ManifestStore(tmp_path), conductor)
+    watcher.poll()
+    _write(tmp_path, "designer", active=False)
+    watcher.poll()
+
+    llm.target = "designer"  # router picks a now-retired agent
+    with pytest.raises(ValueError):
+        conductor.route("design it")
+
+
+def test_conductor_skips_invalid_manifest(tmp_path):
+    conductor = Orchestrator(build_default_registry(), llm=_RoutingLLM())
+    _write(tmp_path, "ok", allowed_tools=["calculator"])
+    _write(tmp_path, "bad", allowed_tools=["nope"])
+    change = ManifestWatcher(ManifestStore(tmp_path), conductor).poll()
+    assert "ok" in change.added and "bad" in change.invalid
+    assert "bad" not in conductor.roster()

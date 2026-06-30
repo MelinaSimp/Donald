@@ -27,3 +27,4 @@ jobs:
           python demo_confirm.py
           python demo_handoff.py
           python demo_runtime.py
+          python demo_live_roster.py

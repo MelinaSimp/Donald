@@ -33,6 +33,7 @@ from .handoff import (
 )
 from .llm import LLM, DEFAULT_MODEL
 from .registry import ToolRegistry
+from .runtime import ChangeSet
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +117,54 @@ class Orchestrator:
             manifest, self._registry, self._llm, self._events, self._approver
         )
         self._manifests[manifest.name] = manifest
+
+    def sync(self, manifests: dict[str, AgentManifest]) -> ChangeSet:
+        """Reconcile the live roster against a desired manifest set (Tier 6).
+
+        This is what makes the conductor hot-reloadable: routing (Tier 1) is
+        built from `_manifests`, so once a manifest is added or retired here,
+        the router covers — or stops covering — that agent on the next turn.
+        Dispatch still flows through the conductor, never agent-to-agent, so
+        Tier 5's "no silent chaining" rule is preserved.
+
+        A bad manifest is skipped (not fatal), matching the runtime's behavior.
+        """
+        change = ChangeSet()
+        for name in list(self._manifests):
+            if name not in manifests:
+                self._drop_agent(name)
+                change.removed.append(name)
+        for name, manifest in manifests.items():
+            if name not in self._manifests:
+                (change.added if self._add_agent(name, manifest) else change.invalid).append(name)
+            elif self._manifests[name] != manifest:
+                self._drop_agent(name)
+                (change.updated if self._add_agent(name, manifest) else change.invalid).append(name)
+        if not change.is_empty():
+            logger.info(
+                "conductor roster: +%s -%s ~%s !%s",
+                change.added, change.removed, change.updated, change.invalid,
+            )
+        return change
+
+    def _add_agent(self, name: str, manifest: AgentManifest) -> bool:
+        try:
+            agent = Agent(
+                manifest, self._registry, self._llm, self._events, self._approver
+            )
+        except Exception as exc:  # noqa: BLE001 — a bad manifest must not kill reload
+            logger.warning("conductor skipping invalid manifest %r: %s", name, exc)
+            self._events.emit("agent.invalid", agent=name, error=str(exc))
+            return False
+        self._agents[name] = agent
+        self._manifests[name] = manifest
+        self._events.emit("agent.registered", agent=name)
+        return True
+
+    def _drop_agent(self, name: str) -> None:
+        self._agents.pop(name, None)
+        self._manifests.pop(name, None)
+        self._events.emit("agent.unregistered", agent=name)
 
     def roster(self) -> list[str]:
         return sorted(self._manifests)
