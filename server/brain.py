@@ -5,7 +5,15 @@ from server.config import settings
 
 logger = logging.getLogger(__name__)
 
-client = Anthropic(api_key=settings.anthropic_api_key)
+# Lazy initialization of Anthropic client to avoid proxy issues at import time
+_client = None
+
+
+def get_client():
+    global _client
+    if _client is None:
+        _client = Anthropic(api_key=settings.anthropic_api_key)
+    return _client
 
 # Tool definitions
 TOOLS = [
@@ -174,6 +182,8 @@ class Brain:
 
         response_text = ""
         tool_uses = []
+
+        client = get_client()
 
         with client.messages.stream(
             model="claude-sonnet-4-6",
