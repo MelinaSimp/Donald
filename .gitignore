@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+*.pyc
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.venv/
+venv/
+*.log
+.env
+.env.local
+
+# Prism per-project preview apps are generated, not committed
+**/.prism/preview/node_modules/
+**/.prism/preview/.next/
+**/.prism/preview/out/
+prism/registry.json

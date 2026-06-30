@@ -6,3 +6,13 @@ deepgram-sdk==3.3.0
 aiohttp==3.9.1
 pydantic==2.5.0
 pydantic-settings==2.1.0
+# Shared across the experiments living in this repo.
+anthropic>=0.40.0
+pytest>=8.0.0
+
+# Prism (head-of-design agent) core:
+pyyaml>=6.0
+# Prism optional live integrations (install as needed):
+# google-genai>=0.3   # Tier 5 images (needs GEMINI_API_KEY + billing)
+# fastapi>=0.110      # serve mockups
+# uvicorn>=0.29
