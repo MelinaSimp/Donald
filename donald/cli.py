@@ -7,11 +7,8 @@ import sys
 
 import anthropic
 
-from . import memory, tools
+from . import config, memory, tools, voice
 from .persona import SYSTEM_PROMPT
-
-MODEL = "claude-opus-4-8"
-MAX_TOKENS = 4096
 
 BANNER = """\
   ____                  _     _
@@ -21,7 +18,7 @@ BANNER = """\
  |____/ \\___/|_| |_|\\__,_|_|\\__,_|
 
  Donald — your terminal assistant.  Type /help for commands, /exit to leave.
- Tools: read_file, write_file, run_shell, web_search, remember (writes & shell ask first).
+ Tools: read/write/edit files, run_shell, web_search, remember (edits & shell ask first).
 """
 
 HELP = """\
@@ -30,11 +27,12 @@ Commands:
   /reset   Forget the current conversation and start fresh
   /memory  Show what Donald remembers across sessions
   /forget  Wipe Donald's long-term memory
+  /voice   Toggle spoken replies (needs the `voice` extra)
   /exit    Quit (Ctrl-D or Ctrl-C also work)
 
-Anything else you type is sent to Donald. He can read files, write files, run
-shell commands, search the web, and remember durable facts about you between
-sessions — he'll ask before writing or running shell.
+Anything else you type is sent to Donald. He can read, write, and edit files,
+run shell commands, search the web, and remember durable facts about you
+between sessions — he'll ask before editing files or running shell.
 """
 
 
@@ -67,7 +65,11 @@ def _run_tool_calls(blocks: list) -> list[dict]:
         if getattr(block, "type", None) != "tool_use":
             continue  # skip text and any server-side tool blocks
         print(f"  ↳ {tools.describe(block.name, block.input)}")
-        if block.name in tools.REQUIRES_APPROVAL and not _approved(block.name, block.input):
+        needs_approval = (
+            block.name in tools.REQUIRES_APPROVAL
+            and not tools.auto_approved(block.name, block.input)
+        )
+        if needs_approval and not _approved(block.name, block.input):
             content, is_error = "Operator declined this action.", True
         else:
             content, is_error = tools.execute(block.name, block.input)
@@ -82,13 +84,19 @@ def _run_tool_calls(blocks: list) -> list[dict]:
     return results
 
 
-def _agent_turn(client: anthropic.Anthropic, messages: list[dict], system: str) -> None:
+def _agent_turn(
+    client: anthropic.Anthropic,
+    messages: list[dict],
+    system: str,
+    cfg: config.Config,
+    speaker: voice.Speaker,
+) -> None:
     """Run one full turn: stream replies and loop through any tool use."""
     print("Donald: ", end="", flush=True)
     while True:
         with client.messages.stream(
-            model=MODEL,
-            max_tokens=MAX_TOKENS,
+            model=cfg.model,
+            max_tokens=cfg.max_tokens,
             system=system,
             tools=tools.ALL_TOOLS,
             messages=messages,
@@ -98,6 +106,12 @@ def _agent_turn(client: anthropic.Anthropic, messages: list[dict], system: str) 
             message = stream.get_final_message()
         print()
         messages.append({"role": "assistant", "content": message.content})
+
+        # Read any prose aloud (no-op unless voice is on).
+        spoken = "".join(
+            b.text for b in message.content if getattr(b, "type", None) == "text"
+        )
+        speaker.speak(spoken)
 
         if message.stop_reason == "tool_use":
             tool_results = _run_tool_calls(message.content)
@@ -111,12 +125,16 @@ def _agent_turn(client: anthropic.Anthropic, messages: list[dict], system: str) 
 
 def main() -> None:
     """Run the interactive loop."""
+    cfg = config.load()
     client = _build_client()
     messages: list[dict] = []
     # Load remembered facts once at startup, the way a person reviews their
     # notes before getting to work. New memories apply next session.
     system = SYSTEM_PROMPT + memory.block()
+    speaker = voice.Speaker(enabled=cfg.voice or "--voice" in sys.argv)
     print(BANNER)
+    if speaker.enabled:
+        print("(spoken replies on)\n")
 
     while True:
         try:
@@ -147,11 +165,22 @@ def main() -> None:
             system = SYSTEM_PROMPT  # this session stops referencing the old notes
             print("(memory wiped)\n" if had else "(nothing to forget)\n")
             continue
+        if user_input == "/voice":
+            _, note = speaker.toggle()
+            print(f"({note})\n")
+            continue
+        if user_input == "/listen":
+            spoken, note = voice.listen_once()
+            if not spoken:
+                print(f"({note})\n")
+                continue
+            print(f"You (spoken): {spoken}")
+            user_input = spoken  # fall through and send it as this turn's message
 
         checkpoint = len(messages)  # roll back to here if the turn fails
         messages.append({"role": "user", "content": user_input})
         try:
-            _agent_turn(client, messages, system)
+            _agent_turn(client, messages, system, cfg, speaker)
             print()
         except anthropic.APIStatusError as exc:
             del messages[checkpoint:]  # drop the failed turn so history stays valid

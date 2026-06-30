@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "donald"
+version = "0.1.0"
+description = "Donald — a Jarvis-style AI assistant for your terminal."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "anthropic>=0.40",
+]
+
+[project.optional-dependencies]
+# Spoken replies (TTS) and spoken input (STT). Microphone capture also needs a
+# system PortAudio library (e.g. `brew install portaudio` / `apt install portaudio19-dev`).
+voice = [
+    "pyttsx3>=2.90",
+    "SpeechRecognition>=3.10",
+    "PyAudio>=0.2.13",
+]
+# Test and lint tooling.
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+donald = "donald.cli:main"
+
+[tool.setuptools]
+packages = ["donald"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

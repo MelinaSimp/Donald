@@ -19,7 +19,9 @@ MEMORY_DIR = pathlib.Path.home() / ".donald"
 MEMORY_PATH = MEMORY_DIR / "memory.md"
 BACKUP_PATH = MEMORY_DIR / "memory.bak"
 
-_HEADER = "# Donald's memory\n\nDurable facts about the operator and their work.\n"
+# Every header line starts with `#` so `block()` strips the whole header and
+# never leaks boilerplate into Donald's remembered facts.
+_HEADER = "# Donald's memory\n# Durable facts about the operator and their work.\n"
 
 
 def load() -> str:

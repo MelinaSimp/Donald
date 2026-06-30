@@ -1,1 +1,5 @@
+# Runtime dependency. For the full setup (console command + extras) prefer:
+#   pip install -e .            # core
+#   pip install -e '.[voice]'   # + spoken replies / input
+#   pip install -e '.[dev]'     # + pytest
 anthropic>=0.40

@@ -16,10 +16,11 @@ from __future__ import annotations
 import pathlib
 import subprocess
 
-from . import memory
+from . import config, memory
 
-MAX_OUTPUT_CHARS = 100_000
-SHELL_TIMEOUT_S = 60
+# Effective settings (defaults < ~/.donald/config.json < env). Loaded once at
+# import; restart Donald to pick up a changed config file.
+CONFIG = config.load()
 
 # Server-side tool: the API runs the search and returns results inline.
 WEB_SEARCH_TOOL = {"type": "web_search_20260209", "name": "web_search"}
@@ -64,6 +65,35 @@ CUSTOM_TOOLS = [
                 },
             },
             "required": ["path", "content"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "edit_file",
+        "description": (
+            "Make a surgical edit to an existing text file: replace an exact "
+            "snippet with new text, leaving the rest untouched. Prefer this over "
+            "write_file when changing part of a file. The `old` snippet must "
+            "appear EXACTLY once — include enough surrounding context to make it "
+            "unique. The operator approves before the edit happens."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "File path to edit, relative to the working directory.",
+                },
+                "old": {
+                    "type": "string",
+                    "description": "Exact text to replace. Must occur exactly once in the file.",
+                },
+                "new": {
+                    "type": "string",
+                    "description": "Replacement text.",
+                },
+            },
+            "required": ["path", "old", "new"],
             "additionalProperties": False,
         },
     },
@@ -133,7 +163,17 @@ CUSTOM_TOOLS = [
 ALL_TOOLS = [*CUSTOM_TOOLS, WEB_SEARCH_TOOL]
 
 # Tools that can change the machine — gated behind operator approval.
-REQUIRES_APPROVAL = {"write_file", "run_shell"}
+REQUIRES_APPROVAL = {"write_file", "edit_file", "run_shell"}
+
+
+def auto_approved(name: str, args: dict) -> bool:
+    """True if config pre-approves this call so the operator isn't asked.
+
+    Currently only shell commands matching a configured prefix allowlist.
+    """
+    if name == "run_shell":
+        return config.shell_auto_approved(args.get("command", ""), CONFIG)
+    return False
 
 
 def describe(name: str, args: dict) -> str:
@@ -143,6 +183,8 @@ def describe(name: str, args: dict) -> str:
     if name == "write_file":
         content = args.get("content", "")
         return f"write {args.get('path')} ({len(content)} chars)"
+    if name == "edit_file":
+        return f"edit {args.get('path')}"
     if name == "run_shell":
         return f"run: {args.get('command')}"
     if name == "remember":
@@ -162,8 +204,8 @@ def _safe_path(path: str) -> pathlib.Path:
 
 
 def _truncate(text: str) -> str:
-    if len(text) > MAX_OUTPUT_CHARS:
-        return text[:MAX_OUTPUT_CHARS] + "\n...[truncated]"
+    if len(text) > CONFIG.max_output_chars:
+        return text[:CONFIG.max_output_chars] + "\n...[truncated]"
     return text
 
 
@@ -182,6 +224,25 @@ def _write_file(args: dict) -> tuple[str, bool]:
     return f"Wrote {len(content)} chars to {args['path']}", False
 
 
+def _edit_file(args: dict) -> tuple[str, bool]:
+    target = _safe_path(args["path"])
+    if not target.is_file():
+        return f"No such file: {args['path']}", True
+    text = target.read_text(encoding="utf-8")
+    old, new = args["old"], args["new"]
+    count = text.count(old)
+    if count == 0:
+        return f"The `old` text was not found in {args['path']}.", True
+    if count > 1:
+        return (
+            f"The `old` text appears {count} times in {args['path']}; "
+            "include more surrounding context so it matches exactly once.",
+            True,
+        )
+    target.write_text(text.replace(old, new, 1), encoding="utf-8")
+    return f"Edited {args['path']}", False
+
+
 def _remember(args: dict) -> tuple[str, bool]:
     return memory.remember(args["note"]), False
 
@@ -197,10 +258,10 @@ def _run_shell(args: dict) -> tuple[str, bool]:
             shell=True,
             capture_output=True,
             text=True,
-            timeout=SHELL_TIMEOUT_S,
+            timeout=CONFIG.shell_timeout_s,
         )
     except subprocess.TimeoutExpired:
-        return f"Command timed out after {SHELL_TIMEOUT_S}s", True
+        return f"Command timed out after {CONFIG.shell_timeout_s}s", True
     combined = (proc.stdout or "") + (proc.stderr or "")
     body = combined.strip() or "(no output)"
     # A non-zero exit is informative, not a tool failure — report it, don't flag it.
@@ -210,6 +271,7 @@ def _run_shell(args: dict) -> tuple[str, bool]:
 _EXECUTORS = {
     "read_file": _read_file,
     "write_file": _write_file,
+    "edit_file": _edit_file,
     "run_shell": _run_shell,
     "remember": _remember,
     "update_memory": _update_memory,
