@@ -1,3 +1,5 @@
+'use client';
+
 import { useState, useEffect, useRef, useCallback } from "react";
 
 // ─── Golden amber palette ───
@@ -17,7 +19,7 @@ const STATES = {
   speaking: { label: "SPEAKING", energy: 1.0, ringSpeed: 1.6, particles: 350, sparkRate: 0.14 },
 };
 
-const PHRASES = [
+const FALLBACK_PHRASES = [
   "Systems are fully operational, sir.",
   "I've already anticipated that request.",
   "Running analysis now. Standby.",
@@ -49,6 +51,8 @@ export default function DonaldOrb() {
   const [displayedPhrase, setDisplayedPhrase] = useState("");
   const [booted, setBooted] = useState(false);
   const [bootProgress, setBootProgress] = useState(0);
+  const [userInput, setUserInput] = useState("");
+  const [showInput, setShowInput] = useState(false);
 
   // Boot
   useEffect(() => {
@@ -61,16 +65,20 @@ export default function DonaldOrb() {
     return () => clearInterval(iv);
   }, []);
 
-  // Typing
+  // Typing animation
   useEffect(() => {
     if (!phraseText) { setDisplayedPhrase(""); return; }
     setDisplayedPhrase("");
     let i = 0;
-    const iv = setInterval(() => { i++; setDisplayedPhrase(phraseText.slice(0, i)); if (i >= phraseText.length) clearInterval(iv); }, 28);
+    const iv = setInterval(() => {
+      i++;
+      setDisplayedPhrase(phraseText.slice(0, i));
+      if (i >= phraseText.length) clearInterval(iv);
+    }, 28);
     return () => clearInterval(iv);
   }, [phraseText]);
 
-  // Transition
+  // State transition
   const transitionTo = useCallback((s: string) => {
     stateRef.current = s;
     setState(s);
@@ -81,20 +89,64 @@ export default function DonaldOrb() {
     sparkRateRef.current.target = (STATES as any)[s].sparkRate;
   }, []);
 
-  const handleInteract = useCallback(() => {
-    if (stateRef.current !== "idle") return;
+  // Send message to agent
+  const sendMessage = useCallback(async (message: string) => {
+    if (!message.trim() || stateRef.current !== "idle") return;
+
     transitionTo("listening");
     setTimeout(() => {
       transitionTo("thinking");
-      setTimeout(() => {
-        transitionTo("speaking");
-        setPhraseText(PHRASES[Math.floor(Math.random() * PHRASES.length)]);
-        setTimeout(() => { transitionTo("idle"); setTimeout(() => setPhraseText(""), 1500); }, 3500);
-      }, 1500);
-    }, 2000);
+
+      // Call the agent API
+      (async () => {
+        try {
+          const response = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: message }),
+          });
+
+          if (!response.ok) {
+            throw new Error("Failed to get response");
+          }
+
+          const data = await response.json();
+          transitionTo("speaking");
+          setPhraseText(data.response || FALLBACK_PHRASES[0]);
+
+          setTimeout(() => {
+            transitionTo("idle");
+            setTimeout(() => setPhraseText(""), 1500);
+          }, 3500);
+        } catch (error) {
+          console.error("Error:", error);
+          transitionTo("speaking");
+          setPhraseText("Systems error. Try again.");
+          setTimeout(() => {
+            transitionTo("idle");
+            setTimeout(() => setPhraseText(""), 1500);
+          }, 3500);
+        }
+      })();
+    }, 1500);
   }, [transitionTo]);
 
-  // Canvas — must re-run after boot; canvas isn't mounted during the boot screen
+  // Handle orb click
+  const handleInteract = useCallback(() => {
+    if (stateRef.current !== "idle") return;
+    setShowInput(!showInput);
+  }, [showInput]);
+
+  // Handle input submission
+  const handleSubmit = useCallback(() => {
+    if (userInput.trim()) {
+      sendMessage(userInput);
+      setUserInput("");
+      setShowInput(false);
+    }
+  }, [userInput, sendMessage]);
+
+  // Canvas animation
   useEffect(() => {
     if (!booted) return;
     const canvas = canvasRef.current;
@@ -321,16 +373,24 @@ export default function DonaldOrb() {
     };
 
     draw();
-    return () => { window.removeEventListener("resize", resize); if (animRef.current) cancelAnimationFrame(animRef.current); };
+    return () => {
+      window.removeEventListener("resize", resize);
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+    };
   }, [booted]);
 
   return (
     <div
       onClick={booted ? handleInteract : undefined}
       style={{
-        width: "100%", height: "100vh", background: BG, position: "relative", overflow: "hidden",
+        width: "100%",
+        height: "100vh",
+        background: BG,
+        position: "relative",
+        overflow: "hidden",
         fontFamily: "'SF Mono','Cascadia Code','Fira Code','JetBrains Mono',monospace",
-        cursor: state === "idle" && booted ? "pointer" : "default", userSelect: "none",
+        cursor: state === "idle" && booted ? "pointer" : "default",
+        userSelect: "none",
       }}
     >
       <style>{`
@@ -341,90 +401,219 @@ export default function DonaldOrb() {
       `}</style>
 
       {!booted && (
-        <div style={{
-          position:"absolute",inset:0,zIndex:50,background:BG,
-          display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-          opacity: bootProgress >= 1 ? 0 : 1, transition:"opacity 0.8s ease",
-        }}>
-          <div style={{ fontSize:14,letterSpacing:10,color:GOLD,marginBottom:28 }}>D.O.N.A.L.D.</div>
-          <div style={{ width:180,height:2,background:"rgba(212,160,32,0.1)",borderRadius:1,overflow:"hidden" }}>
-            <div style={{
-              height:"100%",background:`linear-gradient(90deg,${DEEP},${GOLD},${BRIGHT})`,
-              width:`${bootProgress*100}%`,transition:"width 0.1s",boxShadow:`0 0 10px ${GOLD}`,
-            }} />
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 50,
+            background: BG,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            opacity: bootProgress >= 1 ? 0 : 1,
+            transition: "opacity 0.8s ease",
+          }}
+        >
+          <div style={{ fontSize: 14, letterSpacing: 10, color: GOLD, marginBottom: 28 }}>
+            D.O.N.A.L.D.
           </div>
-          <div style={{ fontSize:9,color:DIM_TEXT,marginTop:12,letterSpacing:3 }}>INITIALIZING CORE</div>
+          <div
+            style={{
+              width: 180,
+              height: 2,
+              background: "rgba(212,160,32,0.1)",
+              borderRadius: 1,
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                height: "100%",
+                background: `linear-gradient(90deg,${DEEP},${GOLD},${BRIGHT})`,
+                width: `${bootProgress * 100}%`,
+                transition: "width 0.1s",
+                boxShadow: `0 0 10px ${GOLD}`,
+              }}
+            />
+          </div>
+          <div style={{ fontSize: 9, color: DIM_TEXT, marginTop: 12, letterSpacing: 3 }}>
+            INITIALIZING CORE
+          </div>
         </div>
       )}
 
       {booted && (
         <>
-          <div style={{
-            position:"absolute",top:"8%",left:0,right:0,
-            display:"flex",flexDirection:"column",alignItems:"center",gap:6,
-            animation:"fadeInUp 1s ease-out", zIndex:2,
-          }}>
-            <div style={{
-              fontSize:22,fontWeight:700,letterSpacing:16,color:GOLD,
-              textShadow:`0 0 40px rgba(212,160,32,0.35)`,
-            }}>
+          <div
+            style={{
+              position: "absolute",
+              top: "8%",
+              left: 0,
+              right: 0,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 6,
+              animation: "fadeInUp 1s ease-out",
+              zIndex: 2,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 22,
+                fontWeight: 700,
+                letterSpacing: 16,
+                color: GOLD,
+                textShadow: `0 0 40px rgba(212,160,32,0.35)`,
+              }}
+            >
               D.O.N.A.L.D.
             </div>
-            <div style={{ fontSize:8,letterSpacing:5,color:DIM_TEXT }}>
+            <div style={{ fontSize: 8, letterSpacing: 5, color: DIM_TEXT }}>
               DIGITAL OPERATIONS NEURAL ADAPTIVE LEARNING DAEMON
             </div>
           </div>
 
-          <canvas ref={canvasRef} style={{
-            position:"absolute",inset:0,width:"100%",height:"100%",
-            animation:"fadeIn 1.5s ease-out",
-          }} />
+          <canvas
+            ref={canvasRef}
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              animation: "fadeIn 1.5s ease-out",
+            }}
+          />
 
-          <div style={{
-            position:"absolute",bottom:"18%",left:0,right:0,
-            display:"flex",flexDirection:"column",alignItems:"center",gap:10,
-            animation:"fadeInUp 1.2s ease-out",zIndex:2,
-          }}>
+          <div
+            style={{
+              position: "absolute",
+              bottom: "18%",
+              left: 0,
+              right: 0,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 10,
+              animation: "fadeInUp 1.2s ease-out",
+              zIndex: 2,
+            }}
+          >
             {displayedPhrase && (
-              <div style={{
-                fontSize:14,color:"rgba(255,220,150,0.8)",maxWidth:380,
-                textAlign:"center",lineHeight:1.7,letterSpacing:0.5,
-                animation:"fadeIn 0.5s ease-out",marginBottom:8,
-              }}>
+              <div
+                style={{
+                  fontSize: 14,
+                  color: "rgba(255,220,150,0.8)",
+                  maxWidth: 380,
+                  textAlign: "center",
+                  lineHeight: 1.7,
+                  letterSpacing: 0.5,
+                  animation: "fadeIn 0.5s ease-out",
+                  marginBottom: 8,
+                }}
+              >
                 "{displayedPhrase}"
                 {displayedPhrase.length < phraseText.length && (
-                  <span style={{ animation:"cursorBlink 0.8s infinite",marginLeft:2 }}>▌</span>
+                  <span style={{ animation: "cursorBlink 0.8s infinite", marginLeft: 2 }}>
+                    ▌
+                  </span>
                 )}
               </div>
             )}
-            <div style={{ display:"flex",alignItems:"center",gap:8 }}>
-              <div style={{
-                width:5,height:5,borderRadius:"50%",
-                background: state==="idle" ? GOLD : BRIGHT,
-                boxShadow:`0 0 8px ${state==="idle"?GOLD:BRIGHT}`,
-                animation: state!=="idle" ? "subtlePulse 0.6s infinite" : "none",
-              }} />
-              <span style={{ fontSize:10,letterSpacing:4,color:MED_TEXT }}>{statusText}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div
+                style={{
+                  width: 5,
+                  height: 5,
+                  borderRadius: "50%",
+                  background: state === "idle" ? GOLD : BRIGHT,
+                  boxShadow: `0 0 8px ${state === "idle" ? GOLD : BRIGHT}`,
+                  animation: state !== "idle" ? "subtlePulse 0.6s infinite" : "none",
+                }}
+              />
+              <span style={{ fontSize: 10, letterSpacing: 4, color: MED_TEXT }}>
+                {statusText}
+              </span>
             </div>
           </div>
 
-          {state==="idle" && !phraseText && (
-            <div style={{
-              position:"absolute",bottom:"9%",left:0,right:0,textAlign:"center",
-              fontSize:10,letterSpacing:3,color:DIM_TEXT,
-              animation:"subtlePulse 3s infinite",zIndex:2,
-            }}>
+          {showInput && state === "idle" && (
+            <div
+              style={{
+                position: "absolute",
+                bottom: "12%",
+                left: "50%",
+                transform: "translateX(-50%)",
+                zIndex: 3,
+                display: "flex",
+                gap: 8,
+                animation: "fadeInUp 0.3s ease-out",
+              }}
+            >
+              <input
+                type="text"
+                value={userInput}
+                onChange={(e) => setUserInput(e.target.value)}
+                onKeyPress={(e) => e.key === "Enter" && handleSubmit()}
+                placeholder="Ask Donald..."
+                autoFocus
+                style={{
+                  padding: "8px 12px",
+                  background: "rgba(212,160,32,0.1)",
+                  border: `1px solid ${GOLD}`,
+                  borderRadius: 4,
+                  color: GOLD,
+                  fontFamily: "inherit",
+                  fontSize: 12,
+                  width: 280,
+                  outline: "none",
+                }}
+              />
+              <button
+                onClick={handleSubmit}
+                style={{
+                  padding: "8px 16px",
+                  background: GOLD,
+                  color: BG,
+                  border: "none",
+                  borderRadius: 4,
+                  cursor: "pointer",
+                  fontWeight: 600,
+                  fontSize: 12,
+                }}
+              >
+                SEND
+              </button>
+            </div>
+          )}
+
+          {state === "idle" && !phraseText && (
+            <div
+              style={{
+                position: "absolute",
+                bottom: "9%",
+                left: 0,
+                right: 0,
+                textAlign: "center",
+                fontSize: 10,
+                letterSpacing: 3,
+                color: DIM_TEXT,
+                animation: "subtlePulse 3s infinite",
+                zIndex: 2,
+              }}
+            >
               TAP TO INTERACT
             </div>
           )}
 
           {[
-            {top:16,left:16,borderTop:`1px solid ${GOLD}18`,borderLeft:`1px solid ${GOLD}18`},
-            {top:16,right:16,borderTop:`1px solid ${GOLD}18`,borderRight:`1px solid ${GOLD}18`},
-            {bottom:16,left:16,borderBottom:`1px solid ${GOLD}18`,borderLeft:`1px solid ${GOLD}18`},
-            {bottom:16,right:16,borderBottom:`1px solid ${GOLD}18`,borderRight:`1px solid ${GOLD}18`},
-          ].map((s,i) => (
-            <div key={i} style={{ position:"absolute",width:18,height:18,...s,pointerEvents:"none" }} />
+            { top: 16, left: 16, borderTop: `1px solid ${GOLD}18`, borderLeft: `1px solid ${GOLD}18` },
+            { top: 16, right: 16, borderTop: `1px solid ${GOLD}18`, borderRight: `1px solid ${GOLD}18` },
+            { bottom: 16, left: 16, borderBottom: `1px solid ${GOLD}18`, borderLeft: `1px solid ${GOLD}18` },
+            { bottom: 16, right: 16, borderBottom: `1px solid ${GOLD}18`, borderRight: `1px solid ${GOLD}18` },
+          ].map((s, i) => (
+            <div key={i} style={{ position: "absolute", width: 18, height: 18, ...s, pointerEvents: "none" }} />
           ))}
         </>
       )}
