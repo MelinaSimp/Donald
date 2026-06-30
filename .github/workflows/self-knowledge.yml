@@ -1,0 +1,26 @@
+name: self-knowledge
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the recent-activity generator can read git log.
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Tests
+        run: python -m pytest
+      - name: Self-knowledge drift check (soft)
+        # Soft to start: reports drift but does not fail the build.
+        # Promote to `--check --strict` once the doc is stable.
+        run: donald self-knowledge --check

@@ -1,0 +1,177 @@
+name: Auto-merge claude branches
+
+# Sweeps every `claude/*` branch into the integration branch automatically —
+# no pull request, no "Compare & pull request" clicking. A branch that merges
+# cleanly is folded in; a branch that conflicts is left untouched and reported
+# in the run summary so it can be resolved by hand.
+#
+# Triggers:
+#   - schedule       : periodic sweep (catches branches pushed at any time,
+#                      including ones that existed before this workflow landed)
+#   - workflow_dispatch: run it on demand from the Actions tab
+#   - push           : immediate sweep when a claude/* branch is updated
+#                      (only fires for branches that already carry this file)
+#
+# NOTE: schedule + the Actions UI dispatch only become active once this file is
+# present on the repository's default branch. Until then, trigger it manually by
+# selecting this branch in "Run workflow", or merge this branch into the default
+# branch first.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/30 * * * *'
+  push:
+    branches:
+      - 'claude/**'
+
+permissions:
+  contents: write
+
+# Never let two sweeps race on the same target branch.
+concurrency:
+  group: auto-merge-claude-branches
+  cancel-in-progress: false
+
+env:
+  TARGET_BRANCH: claude/quirky-wright-uddjow
+  # Delete each claude/* branch after it is fully merged into the target.
+  # Its commits live on in the target, so nothing is lost. Set to "false" to
+  # merge-only and keep the source branches.
+  DELETE_MERGED: "true"
+  # Branches that are never merged and never deleted, even when fully merged.
+  # Space-separated. The automation's own branch is protected by default.
+  PROTECTED_BRANCHES: "claude/branch-cleanup-automation-dc07m8"
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Merge eligible claude/* branches into target
+        run: |
+          set -euo pipefail
+          git fetch origin --prune
+
+          TARGET="$TARGET_BRANCH"
+          merged=()
+          conflicted=()
+          uptodate=()
+          protected=()
+          # Branches whose commits are fully contained in the target after this
+          # run — safe to delete (nothing would be lost).
+          cleanup=()
+
+          for ref in $(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/claude/*'); do
+            branch="${ref#origin/}"
+
+            # Don't merge the target into itself.
+            if [ "$branch" = "$TARGET" ]; then
+              continue
+            fi
+
+            # Never touch protected branches (no merge, no delete).
+            case " ${PROTECTED_BRANCHES:-} " in
+              *" $branch "*)
+                echo "Protected — skipping $branch"
+                protected+=("$branch")
+                continue
+                ;;
+            esac
+
+            # Skip branches that have nothing the target doesn't already have —
+            # they are already fully merged, so they qualify for cleanup.
+            if [ -z "$(git rev-list "$TARGET..origin/$branch")" ]; then
+              uptodate+=("$branch")
+              cleanup+=("$branch")
+              continue
+            fi
+
+            echo "::group::Merging $branch"
+            if git merge --no-ff --no-edit -m "Auto-merge $branch into $TARGET" "origin/$branch"; then
+              echo "Merged $branch"
+              merged+=("$branch")
+              cleanup+=("$branch")
+            else
+              echo "Conflict merging $branch — leaving it untouched"
+              git merge --abort
+              conflicted+=("$branch")
+            fi
+            echo "::endgroup::"
+          done
+
+          # A single push for everything merged this run. Pushes made with the
+          # built-in GITHUB_TOKEN do not retrigger workflows, so no merge loop.
+          # This must succeed before any branch is deleted — set -e guarantees we
+          # never reach the cleanup step if the merged work failed to land.
+          if [ ${#merged[@]} -gt 0 ]; then
+            git push origin "HEAD:$TARGET"
+          else
+            echo "Nothing new to merge."
+          fi
+
+          # Delete branches that are now fully merged into the target. Per-branch
+          # failures (e.g. branch protection) are tolerated and reported, not fatal.
+          deleted=()
+          delete_failed=()
+          if [ "${DELETE_MERGED:-false}" = "true" ] && [ ${#cleanup[@]} -gt 0 ]; then
+            for branch in "${cleanup[@]}"; do
+              echo "::group::Deleting merged branch $branch"
+              if git push origin --delete "$branch"; then
+                echo "Deleted $branch"
+                deleted+=("$branch")
+              else
+                echo "Could not delete $branch (protected or already gone)"
+                delete_failed+=("$branch")
+              fi
+              echo "::endgroup::"
+            done
+          fi
+
+          # Run summary (Actions > this run > Summary).
+          {
+            echo "## Auto-merge summary"
+            echo ""
+            echo "**Target:** \`$TARGET\`"
+            echo ""
+            echo "### Merged (${#merged[@]})"
+            if [ ${#merged[@]} -eq 0 ]; then echo "_none_"; else
+              for b in "${merged[@]}"; do echo "- \`$b\`"; done
+            fi
+            echo ""
+            echo "### Skipped — merge conflict (${#conflicted[@]})"
+            if [ ${#conflicted[@]} -eq 0 ]; then echo "_none_"; else
+              for b in "${conflicted[@]}"; do echo "- \`$b\` — resolve manually"; done
+            fi
+            echo ""
+            echo "### Already up to date (${#uptodate[@]})"
+            if [ ${#uptodate[@]} -eq 0 ]; then echo "_none_"; else
+              for b in "${uptodate[@]}"; do echo "- \`$b\`"; done
+            fi
+            echo ""
+            echo "### Protected — skipped (${#protected[@]})"
+            if [ ${#protected[@]} -eq 0 ]; then echo "_none_"; else
+              for b in "${protected[@]}"; do echo "- \`$b\`"; done
+            fi
+            echo ""
+            echo "### Deleted after merge (${#deleted[@]})"
+            if [ ${#deleted[@]} -eq 0 ]; then echo "_none_"; else
+              for b in "${deleted[@]}"; do echo "- \`$b\`"; done
+            fi
+            if [ ${#delete_failed[@]} -gt 0 ]; then
+              echo ""
+              echo "### Could not delete (${#delete_failed[@]})"
+              for b in "${delete_failed[@]}"; do echo "- \`$b\` — protected or already gone"; done
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

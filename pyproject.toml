@@ -2,51 +2,31 @@
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
+# NOTE: this repo hosts several independent experiments (security/, donald/,
+# src/trillion/, prism/). A single root pyproject can only describe one package;
+# the previous root file declared [project] twice (invalid TOML), so this is
+# scoped to Prism. Other projects build/run from their own package dirs.
 [project]
-name = "agent-security"
+name = "prism-design-agent"
 version = "0.1.0"
-description = "Framework-agnostic, dependency-free security hardening primitives for AI-agent codebases."
-readme = "README.md"
-requires-python = ">=3.9"
-license = { text = "MIT" }
-keywords = ["security", "llm", "agent", "prompt-injection", "hardening"]
-# Intentionally zero runtime dependencies: the library is pure standard
-# library so it drops into any stack without a dependency negotiation.
-dependencies = []
-
-[project.optional-dependencies]
-# Tooling the CVE scanner shells out to (not imported); install where you run scans.
-scan = ["pip-audit"]
-dev = ["pytest"]
-
-[tool.setuptools]
-packages = ["security"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-[project]
-name = "trillion"
-version = "0.1.0"
-description = "Trillion — voice analytics over read-only Supabase Postgres databases."
+description = "Prism — a head-of-design sub-agent that composes award-quality Next.js mockups."
 requires-python = ">=3.11"
 dependencies = [
-    "asyncpg>=0.29",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-    "pytest-asyncio>=0.23",
-]
+agent = ["anthropic>=0.40"]
+images = ["google-genai>=0.3"]
+serving = ["fastapi>=0.110", "uvicorn>=0.29"]
+dev = ["pytest>=8.0"]
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+[project.scripts]
+prism = "prism.cli:main"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/trillion"]
+[tool.setuptools]
+packages = ["prism"]
 
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
 testpaths = ["tests"]
-pythonpath = ["src"]
+addopts = "-q"

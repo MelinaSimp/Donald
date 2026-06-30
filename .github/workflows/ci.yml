@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dev dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Run tests
+        run: pytest
+      - name: Run no-API demos (smoke)
+        run: |
+          python demo.py --dry
+          python demo_routing.py --dry
+          python demo_isolation.py
+          python demo_confirm.py
+          python demo_handoff.py
+          python demo_runtime.py
+          python demo_live_roster.py
