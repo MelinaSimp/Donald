@@ -220,6 +220,10 @@ class ManifestWatcher:
         self._runtime = runtime
         self._fingerprint: tuple | None = None
 
+    @property
+    def store(self) -> ManifestStore:
+        return self._store
+
     def poll(self) -> ChangeSet | None:
         """Return the applied ChangeSet if the store changed, else None."""
         fingerprint = self._store.fingerprint()

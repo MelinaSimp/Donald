@@ -35,6 +35,7 @@ from .runtime import (
     manifest_from_dict,
 )
 from .tools import build_default_registry
+from .watch import serve, serve_with_watchdog
 
 __all__ = [
     "Agent",
@@ -68,5 +69,7 @@ __all__ = [
     "ManifestWatcher",
     "dispatch_tool_name",
     "manifest_from_dict",
+    "serve",
+    "serve_with_watchdog",
     "build_default_registry",
 ]

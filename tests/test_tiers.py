@@ -266,3 +266,15 @@ def test_invalid_manifest_is_skipped(tmp_path):
     change = ManifestWatcher(ManifestStore(tmp_path), runtime).poll()
     assert "ok" in change.added and "bad" in change.invalid
     assert "ok" in runtime.roster() and "bad" not in runtime.roster()
+
+
+def test_serve_loop_applies_changes(tmp_path):
+    from orchestrator import serve
+
+    _write(tmp_path, "engineer", allowed_tools=["calculator"])
+    runtime = AgentRuntime(build_default_registry(), llm=EchoLLM())
+    watcher = ManifestWatcher(ManifestStore(tmp_path), runtime)
+    seen = []
+    # Bounded loop (iterations + zero interval) so the test terminates.
+    serve(watcher, interval=0, on_change=seen.append, iterations=1)
+    assert "engineer" in runtime.roster() and seen and seen[0].added == ["engineer"]

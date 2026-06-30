@@ -106,11 +106,17 @@ Agents are **data**, so the roster can change while the process runs:
   unregister). A bad manifest is skipped, not fatal. No restart, no redeploy.
 
 ```python
-from orchestrator import AgentRuntime, ManifestStore, ManifestWatcher, build_default_registry
+from orchestrator import (
+    AgentRuntime, ManifestStore, ManifestWatcher, build_default_registry,
+    serve, serve_with_watchdog,
+)
 
 runtime = AgentRuntime(build_default_registry())
 watcher = ManifestWatcher(ManifestStore("./agents"), runtime)
-watcher.poll()   # call on startup, then on each inotify/`watchdog` event
+
+watcher.poll()                       # one-shot: apply the current manifest set
+serve(watcher, interval=1.0)         # interval polling (no extra dependency)
+serve_with_watchdog(watcher)         # push-based on FS events (pip install watchdog)
 ```
 
 ## Quickstart
