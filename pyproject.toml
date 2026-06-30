@@ -2,6 +2,10 @@
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
+# NOTE: this repo hosts several independent experiments (security/, donald/,
+# src/trillion/, prism/). A single root pyproject can only describe one package;
+# the previous root file declared [project] twice (invalid TOML), so this is
+# scoped to Prism. Other projects build/run from their own package dirs.
 [project]
 name = "prism-design-agent"
 version = "0.1.0"
@@ -12,8 +16,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Live integrations. None are needed to import the package or run the unit
-# ship-tests; install only the ones whose features you intend to use live.
 agent = ["anthropic>=0.40"]
 images = ["google-genai>=0.3"]
 serving = ["fastapi>=0.110", "uvicorn>=0.29"]
