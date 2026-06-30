@@ -1,0 +1,7 @@
+# Drift-checker allowlist for Donald's self-knowledge doc.
+# One reference per line (exact backtick token). Lines starting with #
+# are comments. Use this for future-tense plans or third-party examples
+# that the checker should not flag as drift.
+#
+# Example:
+#   memory_store   # planned, not yet implemented
