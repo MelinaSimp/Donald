@@ -1,0 +1,75 @@
+"""A small, opinionated orchestration layer for AI agents.
+
+Tier 2 (this PR): a shared tool registry + a generic, config-driven agent that
+runs a bounded, least-privilege tool-use loop. Later tiers (routing, failure
+isolation, confirmation gates, handoffs, hot-reload) build on this backbone.
+"""
+
+from .agent import Agent, AgentManifest, AgentResult
+from .confirmation import (
+    AllowAll,
+    Approver,
+    CallbackApprover,
+    ConfirmationDecision,
+    ConfirmationRequest,
+    ConsoleApprover,
+    DenyAll,
+)
+from .events import EventEmitter, Observer
+from .handoff import (
+    CallbackHandoffApprover,
+    HandoffApprover,
+    HandoffRecommendation,
+    HoldForHuman,
+    make_handoff_tool,
+)
+from .llm import LLM, DEFAULT_MODEL
+from .orchestrator import Orchestrator, RoutingDecision, RouteStep
+from .registry import Tool, ToolRegistry, ToolView
+from .runtime import (
+    AgentRuntime,
+    ChangeSet,
+    ManifestStore,
+    ManifestWatcher,
+    dispatch_tool_name,
+    manifest_from_dict,
+)
+from .tools import build_default_registry
+from .watch import serve, serve_with_watchdog
+
+__all__ = [
+    "Agent",
+    "AgentManifest",
+    "AgentResult",
+    "AllowAll",
+    "Approver",
+    "CallbackApprover",
+    "ConfirmationDecision",
+    "ConfirmationRequest",
+    "ConsoleApprover",
+    "DenyAll",
+    "EventEmitter",
+    "Observer",
+    "CallbackHandoffApprover",
+    "HandoffApprover",
+    "HandoffRecommendation",
+    "HoldForHuman",
+    "make_handoff_tool",
+    "LLM",
+    "DEFAULT_MODEL",
+    "Orchestrator",
+    "RoutingDecision",
+    "RouteStep",
+    "Tool",
+    "ToolRegistry",
+    "ToolView",
+    "AgentRuntime",
+    "ChangeSet",
+    "ManifestStore",
+    "ManifestWatcher",
+    "dispatch_tool_name",
+    "manifest_from_dict",
+    "serve",
+    "serve_with_watchdog",
+    "build_default_registry",
+]
