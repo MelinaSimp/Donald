@@ -88,6 +88,28 @@ CUSTOM_TOOLS = [
         },
     },
     {
+        "name": "update_memory",
+        "description": (
+            "Rewrite your entire long-term memory with a curated version. Use "
+            "this to tidy up — merge duplicates, drop facts that are stale or no "
+            "longer true, fix contradictions. You are given your current memory "
+            "at the start of each session; pass the full revised set of facts, "
+            "one per line, since this REPLACES everything. Passing empty clears "
+            "it. The previous copy is backed up automatically."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "description": "The full revised memory, one durable fact per line.",
+                }
+            },
+            "required": ["content"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "run_shell",
         "description": (
             "Run a shell command in the working directory and return its "
@@ -125,6 +147,8 @@ def describe(name: str, args: dict) -> str:
         return f"run: {args.get('command')}"
     if name == "remember":
         return f"remember: {args.get('note')}"
+    if name == "update_memory":
+        return f"tidy memory ({len(args.get('content', ''))} chars)"
     return f"{name} {args}"
 
 
@@ -162,6 +186,10 @@ def _remember(args: dict) -> tuple[str, bool]:
     return memory.remember(args["note"]), False
 
 
+def _update_memory(args: dict) -> tuple[str, bool]:
+    return memory.replace(args["content"]), False
+
+
 def _run_shell(args: dict) -> tuple[str, bool]:
     try:
         proc = subprocess.run(
@@ -184,6 +212,7 @@ _EXECUTORS = {
     "write_file": _write_file,
     "run_shell": _run_shell,
     "remember": _remember,
+    "update_memory": _update_memory,
 }
 
 

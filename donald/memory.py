@@ -5,9 +5,10 @@ Memory is a plain Markdown file in the operator's home directory
 launched from. At startup the CLI loads it into Donald's system prompt; the
 `remember` tool appends to it.
 
-Kept deliberately simple: append-only bullets. Curation (editing or pruning)
-is a later concern; for now the operator can review with `/memory` and wipe
-with `/forget`.
+Donald adds facts with `remember` (append) and tidies them with `update_memory`
+(rewrite the whole set), so notes don't drift stale or contradict each other.
+The operator can review with `/memory` and wipe with `/forget`. A one-level
+backup (`memory.bak`) guards against a careless rewrite.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ import pathlib
 
 MEMORY_DIR = pathlib.Path.home() / ".donald"
 MEMORY_PATH = MEMORY_DIR / "memory.md"
+BACKUP_PATH = MEMORY_DIR / "memory.bak"
 
 _HEADER = "# Donald's memory\n\nDurable facts about the operator and their work.\n"
 
@@ -40,12 +42,34 @@ def remember(note: str) -> str:
     return f"Noted: {note}"
 
 
-def clear() -> bool:
-    """Forget everything. Returns True if there was a memory file to remove."""
+def _strip_headers(text: str) -> str:
+    """Drop any Markdown header lines so we don't duplicate ours."""
+    lines = [ln for ln in text.splitlines() if not ln.lstrip().startswith("#")]
+    return "\n".join(lines).strip()
+
+
+def replace(content: str) -> str:
+    """Rewrite the whole memory with a curated version. Backs up the old copy."""
+    body = _strip_headers(content.strip())
+    MEMORY_DIR.mkdir(parents=True, exist_ok=True)
     if MEMORY_PATH.exists():
-        MEMORY_PATH.unlink()
-        return True
-    return False
+        MEMORY_PATH.replace(BACKUP_PATH)  # one-level undo for a careless rewrite
+    if not body:
+        MEMORY_PATH.write_text(_HEADER, encoding="utf-8")
+        return "Memory cleared."
+    MEMORY_PATH.write_text(f"{_HEADER}\n{body}\n", encoding="utf-8")
+    count = sum(1 for ln in body.splitlines() if ln.strip())
+    return f"Memory updated ({count} item{'s' if count != 1 else ''})."
+
+
+def clear() -> bool:
+    """Forget everything, backup included. True if there was anything to remove."""
+    removed = False
+    for path in (MEMORY_PATH, BACKUP_PATH):
+        if path.exists():
+            path.unlink()
+            removed = True
+    return removed
 
 
 def block() -> str:
