@@ -330,6 +330,7 @@ def test_settings_defaults_and_redaction():
     s = _settings()
     assert s.donald_model == "claude-opus-4-8"
     assert s.hermes_base_url == "http://127.0.0.1:8642"
+    assert s.elevenlabs_voice_id == "DAqNbWkj293fwKQlkwBq"  # Donald's voice
     # redacted view never leaks secret values, only their presence.
     red = s.redacted()
     assert isinstance(red["anthropic_api_key"], bool)

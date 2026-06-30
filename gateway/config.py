@@ -102,7 +102,8 @@ def load_settings() -> Settings:
         hermes_timeout_s=float(os.environ.get("HERMES_TIMEOUT_S", "120")),
         voice_enabled=_env_bool("VOICE_ENABLED", False),
         elevenlabs_api_key=os.environ.get("ELEVENLABS_API_KEY"),
-        elevenlabs_voice_id=os.environ.get("ELEVENLABS_VOICE_ID", ""),
+        # Default is Donald's voice; override per-deployment if you reclone it.
+        elevenlabs_voice_id=os.environ.get("ELEVENLABS_VOICE_ID", "DAqNbWkj293fwKQlkwBq"),
         elevenlabs_model=os.environ.get("ELEVENLABS_MODEL", "eleven_multilingual_v2"),
         host=os.environ.get("GATEWAY_HOST", "127.0.0.1"),
         port=_env_int("GATEWAY_PORT", 8765),
