@@ -68,6 +68,26 @@ FORBIDDEN_FAMILIES: frozenset[str] = frozenset({
 
 ROLES = ("display", "body", "mono")
 
+# next/font/google requires explicit weights for non-variable families. Variable
+# families (the default trio + most others) omit weight entirely.
+NON_VARIABLE_WEIGHTS: dict[str, list[str]] = {
+    "Space Mono": ["400", "700"],
+    "DM Mono": ["400", "500"],
+    "DM Serif Display": ["400"],
+    "Instrument Serif": ["400"],
+    "Libre Caslon Display": ["400"],
+    "Playfair Display": ["400", "600", "800"],
+}
+
+
+def google_import_name(family: str) -> str:
+    """next/font/google export name: spaces -> underscores ('Inter Tight' -> 'Inter_Tight')."""
+    return family.strip().replace(" ", "_")
+
+
+def weights_for(family: str) -> list[str] | None:
+    return NON_VARIABLE_WEIGHTS.get(family.strip())
+
 _ALLOWED_BY_ROLE: dict[str, set[str]] = {
     role: {e.name for e in entries} for role, entries in FONT_CATALOG.items()
 }

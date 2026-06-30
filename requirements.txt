@@ -1,0 +1,14 @@
+# Core (always required)
+pyyaml>=6.0
+
+# Live integrations — optional. Uncomment the ones you use.
+#   The planning loop:
+# anthropic>=0.40
+#   AI image generation (Tier 5) — also needs GEMINI_API_KEY + billing enabled:
+# google-genai>=0.3
+#   The mockup-serving endpoint (Tier 2/5):
+# fastapi>=0.110
+# uvicorn>=0.29
+
+# Dev / test
+pytest>=8.0

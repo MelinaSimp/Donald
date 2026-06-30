@@ -1,6 +1,10 @@
 __pycache__/
 *.pyc
+*.egg-info/
 .pytest_cache/
+.env
+.venv/
+venv/
 # Per-project preview apps are generated, not committed
 **/.prism/preview/node_modules/
 **/.prism/preview/.next/
