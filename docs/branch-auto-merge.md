@@ -45,5 +45,9 @@ repository's **default branch**. Until then, either:
 - **Frequency** — change the `cron` expression.
 - **Deletion** — `env.DELETE_MERGED` (`"true"` by default). Set to `"false"` to
   keep merged branches around.
+- **Protected branches** — `env.PROTECTED_BRANCHES`, a space-separated list that
+  is never merged and never deleted. The automation's own branch
+  (`claude/branch-cleanup-automation-dc07m8`) is protected by default; add any
+  work-in-progress branches you want left alone.
 - **Conflicts** — conflicting branches are reported, never force-merged and
   never deleted. Resolve them manually; the next sweep picks them up once clean.

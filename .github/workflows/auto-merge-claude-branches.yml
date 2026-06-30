@@ -39,6 +39,9 @@ env:
   # Its commits live on in the target, so nothing is lost. Set to "false" to
   # merge-only and keep the source branches.
   DELETE_MERGED: "true"
+  # Branches that are never merged and never deleted, even when fully merged.
+  # Space-separated. The automation's own branch is protected by default.
+  PROTECTED_BRANCHES: "claude/branch-cleanup-automation-dc07m8"
 
 jobs:
   auto-merge:
@@ -65,6 +68,7 @@ jobs:
           merged=()
           conflicted=()
           uptodate=()
+          protected=()
           # Branches whose commits are fully contained in the target after this
           # run — safe to delete (nothing would be lost).
           cleanup=()
@@ -76,6 +80,15 @@ jobs:
             if [ "$branch" = "$TARGET" ]; then
               continue
             fi
+
+            # Never touch protected branches (no merge, no delete).
+            case " ${PROTECTED_BRANCHES:-} " in
+              *" $branch "*)
+                echo "Protected — skipping $branch"
+                protected+=("$branch")
+                continue
+                ;;
+            esac
 
             # Skip branches that have nothing the target doesn't already have —
             # they are already fully merged, so they qualify for cleanup.
@@ -145,6 +158,11 @@ jobs:
             echo "### Already up to date (${#uptodate[@]})"
             if [ ${#uptodate[@]} -eq 0 ]; then echo "_none_"; else
               for b in "${uptodate[@]}"; do echo "- \`$b\`"; done
+            fi
+            echo ""
+            echo "### Protected — skipped (${#protected[@]})"
+            if [ ${#protected[@]} -eq 0 ]; then echo "_none_"; else
+              for b in "${protected[@]}"; do echo "- \`$b\`"; done
             fi
             echo ""
             echo "### Deleted after merge (${#deleted[@]})"
