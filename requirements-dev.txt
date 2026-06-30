@@ -1,0 +1,3 @@
+# Dev/test dependencies. The library itself only needs requirements.txt.
+-r requirements.txt
+pytest>=8

@@ -132,6 +132,16 @@ python demo.py            # a bounded agent
 python demo_routing.py    # routes the four spec scenarios
 ```
 
+## Tests
+
+A CI-friendly pytest suite covers every tier's invariants with no API key
+(the agent loop is driven by scripted fake LLMs):
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
 ## Design principles
 
 - The orchestrator is a **router, not a worker** — it decides *who* and
