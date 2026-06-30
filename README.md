@@ -5,7 +5,7 @@ what, with which tools, under what limits, and what happens when something
 goes wrong. Built tier by tier; each tier is independently shippable.
 
 - **Stack:** Python, Anthropic SDK (`claude-opus-4-8`, adaptive thinking).
-- **Status:** Tiers 1–5 landed. Tier 6 to follow.
+- **Status:** All six tiers landed.
 
 ## The six tiers
 
@@ -16,7 +16,7 @@ goes wrong. Built tier by tier; each tier is independently shippable.
 | 3 | Failure isolation at every boundary | **done** |
 | 4 | Human-in-the-loop confirmation gates | **done** |
 | 5 | Handoff system (propose, don't chain) | **done** |
-| 6 | Live hot-reload (config-driven runtime) | planned |
+| 6 | Live hot-reload (config-driven runtime) | **done** |
 
 ## What's here (Tier 2)
 
@@ -92,17 +92,39 @@ agent dispatches another directly:
 - Artifacts must be references (paths/IDs/URLs); inlined blobs are rejected, so
   handoffs stay small and serializable.
 
+## What's here (Tier 6)
+
+Agents are **data**, so the roster can change while the process runs:
+
+- **`ManifestStore`** — one JSON file per agent in a directory is the source of
+  truth (`"active": false` retires one without deleting it).
+- **`AgentRuntime`** — keeps the live roster in sync with a manifest set and
+  maintains a `dispatch_to_<name>` tool per agent (capability and definition
+  decoupled).
+- **`ManifestWatcher.poll()`** — the change signal: on a file-watch event or an
+  interval, it reloads and applies the diff (new agents register, retired ones
+  unregister). A bad manifest is skipped, not fatal. No restart, no redeploy.
+
+```python
+from orchestrator import AgentRuntime, ManifestStore, ManifestWatcher, build_default_registry
+
+runtime = AgentRuntime(build_default_registry())
+watcher = ManifestWatcher(ManifestStore("./agents"), runtime)
+watcher.poll()   # call on startup, then on each inotify/`watchdog` event
+```
+
 ## Quickstart
 
 ```bash
 pip install -r requirements.txt
 
-# No API key needed — Tier 2 (allowlist), Tier 1 (policy), Tier 3 (isolation):
+# No API key needed — each demo verifies one tier's invariants:
 python demo.py --dry
 python demo_routing.py --dry
 python demo_isolation.py
 python demo_confirm.py
 python demo_handoff.py
+python demo_runtime.py
 
 # Live (needs ANTHROPIC_API_KEY):
 export ANTHROPIC_API_KEY=sk-ant-...
@@ -118,4 +140,29 @@ python demo_routing.py    # routes the four spec scenarios
   requires and not one more.
 - **Bound everything** — every loop has a max iteration count, every call a
   token ceiling, every agent a declared model.
-- **Agents propose, humans dispose** (lands with Tiers 4–5).
+- **Agents propose, humans dispose** — anything consequential (Tier 4 gates,
+  Tier 5 handoffs) stops and asks; the human is the circuit-breaker.
+- **Pass references, not payloads** — handoffs carry paths/IDs/URLs, not blobs.
+
+## How the tiers fit together
+
+- The **shared registry** (Tier 2) is what **Tier 1** routes over, what agents
+  filter into **allowlists**, and what **Tier 6** registers dispatch tools into
+  at runtime.
+- **Failure isolation** (Tier 3) is what makes **Tier 5** handoffs and **Tier 6**
+  dynamic agents safe to run — a bad agent (or a bad manifest) fails in its box.
+- **Confirmation gates** (Tier 4) and **handoff approvals** (Tier 5) are the same
+  idea at two levels: nothing consequential happens without a human yes.
+
+## Module map
+
+| Module | Tier | Role |
+|--------|------|------|
+| `registry.py` | 2 | `ToolRegistry` + filtered `ToolView` (least privilege) |
+| `agent.py` | 2/3/4/5 | bounded loop; tool boundary; confirmation gate; handoff capture |
+| `llm.py` | — | thin Anthropic Messages API wrapper (adaptive thinking) |
+| `orchestrator.py` | 1/5 | the conductor: routing + handoff review |
+| `events.py` | 3 | fire-and-forget observer bus |
+| `confirmation.py` | 4 | `Approver` seam + built-ins |
+| `handoff.py` | 5 | `HandoffRecommendation`, `propose_handoff` control tool |
+| `runtime.py` | 6 | manifest store + watcher + dispatch-tool factory |

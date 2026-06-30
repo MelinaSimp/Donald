@@ -52,6 +52,17 @@ class ToolRegistry:
             raise ValueError(f"tool already registered: {tool.name!r}")
         self._tools[tool.name] = tool
 
+    def upsert(self, tool: Tool) -> None:
+        """Register or replace a tool — the idempotent path for hot-reload (Tier 6)."""
+        self._tools[tool.name] = tool
+
+    def unregister(self, name: str) -> None:
+        """Remove a tool if present. Used when a hot-reloaded agent retires."""
+        self._tools.pop(name, None)
+
+    def has(self, name: str) -> bool:
+        return name in self._tools
+
     def get(self, name: str) -> Tool:
         return self._tools[name]
 

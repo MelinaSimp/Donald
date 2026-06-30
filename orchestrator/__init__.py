@@ -26,6 +26,14 @@ from .handoff import (
 from .llm import LLM, DEFAULT_MODEL
 from .orchestrator import Orchestrator, RoutingDecision, RouteStep
 from .registry import Tool, ToolRegistry, ToolView
+from .runtime import (
+    AgentRuntime,
+    ChangeSet,
+    ManifestStore,
+    ManifestWatcher,
+    dispatch_tool_name,
+    manifest_from_dict,
+)
 from .tools import build_default_registry
 
 __all__ = [
@@ -54,5 +62,11 @@ __all__ = [
     "Tool",
     "ToolRegistry",
     "ToolView",
+    "AgentRuntime",
+    "ChangeSet",
+    "ManifestStore",
+    "ManifestWatcher",
+    "dispatch_tool_name",
+    "manifest_from_dict",
     "build_default_registry",
 ]
