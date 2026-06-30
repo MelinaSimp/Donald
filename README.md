@@ -68,6 +68,22 @@ status = compute_audit(SecurityState(approval_mode="smart"))  # 3.5
 # {"score": 97, "color": "green", "signals": [...]}
 ```
 
+### Worked example (every seam wired)
+
+`examples/fastapi_agent.py` is a tiny runnable FastAPI agent that wires every
+module at the place it belongs in a request's lifecycle — startup guard, auth
+rate-limit + bearer rotation, CSP headers, the ingest gate, and a tool
+dispatcher chaining `killswitch → anomaly → approval → run → redacted log`,
+plus the `/api/security/status` shield endpoint and a CSP report sink.
+
+```bash
+pip install fastapi uvicorn
+AGENT_BEARER_TOKEN=dev-token uvicorn examples.fastapi_agent:app --port 8000
+```
+
+`tests/test_example_fastapi.py` exercises it end-to-end (auto-skips if FastAPI
+isn't installed, so the core suite stays dependency-free).
+
 ### System-prompt rules the gate depends on (1.2)
 
 Teach your LLM, in the system prompt, to:
