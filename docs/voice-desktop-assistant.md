@@ -95,6 +95,44 @@ is passed through `security.log_redact.redact()`.
 - **Dry-run.** `--dry-run` makes Hermes describe actions instead of running
   them — use it the first time on a new machine, and in demos.
 
+## Always-on wake — "say Donald from anywhere, it opens"
+
+The browser UI listens for the wake word *while it's open*. To get the real
+experience — you're anywhere on your computer, you say **"Donald"**, and the app
+opens itself, already listening — run the **wake listener** (`donald/listener.py`):
+
+```bash
+python -m donald.listener
+```
+
+It listens to the microphone in the background. When it hears "Donald" it makes
+sure the app server is up (starting it if needed) and opens the UI with
+`?armed=1`, which tells the page to skip the button, greet you ("Yeah?"), and
+start capturing your command immediately. So the whole interaction is: *say
+"Donald", then just talk.*
+
+**Wake-word recognition is offline.** It uses [Vosk](https://alphacephei.com/vosk/models)
+— no audio leaves the machine, no per-utterance network call. One-time setup:
+
+```bash
+pip install vosk sounddevice          # macOS: brew install portaudio first
+# download vosk-model-small-en-us-0.15, unzip it to ./model
+```
+
+**Start it at login (macOS).** `scripts/com.donald.listener.plist` is a
+LaunchAgent template — edit the two paths and your key, copy it to
+`~/Library/LaunchAgents/`, and `launchctl load` it. Then it's always there;
+macOS will ask for microphone permission the first time (allow it).
+
+The launch *decision* (wake-word matching, a cooldown so a long command doesn't
+relaunch mid-sentence) lives in `WakeListener.handle_text` and is unit-tested
+without a microphone; the audio loop just feeds it recognized text.
+
+> Honest note: Vosk full-STT keyword spotting is "good enough" and fully
+> offline, but a purpose-built wake engine (Porcupine/openWakeWord) is more
+> robust against false triggers. It's a drop-in swap — replace `_load_recognizer`
+> and keep `handle_text`.
+
 ## Extending it
 
 The engine is structured so new powers are additive:

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  macOS LaunchAgent: keep Donald's wake listener running, start it at login.
+
+  Setup (edit the two paths to match your machine, then load it):
+    1) Replace /ABSOLUTE/PATH/TO/python with the python that has vosk+sounddevice
+       installed (run `which python` in the project's environment).
+    2) Replace /ABSOLUTE/PATH/TO/Donald with the project folder (must contain
+       the `model/` Vosk folder, or set VOSK_MODEL below).
+    3) cp scripts/com.donald.listener.plist ~/Library/LaunchAgents/
+       launchctl load ~/Library/LaunchAgents/com.donald.listener.plist
+
+  macOS will ask for microphone permission the first time — allow it.
+  Unload with:  launchctl unload ~/Library/LaunchAgents/com.donald.listener.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.donald.listener</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/ABSOLUTE/PATH/TO/python</string>
+        <string>-m</string>
+        <string>donald.listener</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/ABSOLUTE/PATH/TO/Donald</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>ANTHROPIC_API_KEY</key>
+        <string>sk-ant-REPLACE_ME</string>
+        <key>VOSK_MODEL</key>
+        <string>model</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/donald-listener.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/donald-listener.err</string>
+</dict>
+</plist>

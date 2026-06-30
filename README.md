@@ -37,7 +37,19 @@ python -m donald.app --dry-run   # Hermes describes actions instead of running t
 ```
 
 Use Chrome or Edge for voice (widest Web Speech API support). The server binds
-to `127.0.0.1` only — it's your machine talking to itself. Full design notes:
+to `127.0.0.1` only — it's your machine talking to itself.
+
+**Hands-free, from anywhere** — run the always-on wake listener so you don't
+even open the page first: say "Donald" and it launches the UI, armed and
+listening.
+
+```bash
+pip install vosk sounddevice   # offline wake word; macOS: brew install portaudio
+# download vosk-model-small-en-us-0.15 → unzip to ./model
+python -m donald.listener      # listens in the background; say "Donald"
+```
+
+Full design notes (incl. start-at-login on macOS):
 [`docs/voice-desktop-assistant.md`](docs/voice-desktop-assistant.md).
 
 ---

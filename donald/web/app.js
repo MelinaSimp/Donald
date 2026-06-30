@@ -211,4 +211,22 @@
       }
     })
     .catch(() => {});
+
+  // Launched by the always-on wake listener (it heard "Donald" and opened us
+  // with ?armed=1): skip the button, greet, and start listening for the
+  // command right away — so the user just keeps talking.
+  if (new URLSearchParams(location.search).has("armed")) {
+    active = true;
+    mode = "command";
+    startBtn.textContent = "Sleep";
+    startBtn.classList.add("live");
+    setOrb("listening");
+    statusEl.textContent = "Yeah? I'm listening.";
+    if (window.speechSynthesis) {
+      window.speechSynthesis.getVoices();
+      // A short greeting both confirms it woke and primes the audio output.
+      setTimeout(() => speak("Yeah?"), 250);
+    }
+    listenAgain();
+  }
 })();
