@@ -1,0 +1,119 @@
+name: Auto-merge claude branches
+
+# Sweeps every `claude/*` branch into the integration branch automatically —
+# no pull request, no "Compare & pull request" clicking. A branch that merges
+# cleanly is folded in; a branch that conflicts is left untouched and reported
+# in the run summary so it can be resolved by hand.
+#
+# Triggers:
+#   - schedule       : periodic sweep (catches branches pushed at any time,
+#                      including ones that existed before this workflow landed)
+#   - workflow_dispatch: run it on demand from the Actions tab
+#   - push           : immediate sweep when a claude/* branch is updated
+#                      (only fires for branches that already carry this file)
+#
+# NOTE: schedule + the Actions UI dispatch only become active once this file is
+# present on the repository's default branch. Until then, trigger it manually by
+# selecting this branch in "Run workflow", or merge this branch into the default
+# branch first.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/30 * * * *'
+  push:
+    branches:
+      - 'claude/**'
+
+permissions:
+  contents: write
+
+# Never let two sweeps race on the same target branch.
+concurrency:
+  group: auto-merge-claude-branches
+  cancel-in-progress: false
+
+env:
+  TARGET_BRANCH: claude/quirky-wright-uddjow
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Merge eligible claude/* branches into target
+        run: |
+          set -euo pipefail
+          git fetch origin --prune
+
+          TARGET="$TARGET_BRANCH"
+          merged=()
+          conflicted=()
+          uptodate=()
+
+          for ref in $(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/claude/*'); do
+            branch="${ref#origin/}"
+
+            # Don't merge the target into itself.
+            if [ "$branch" = "$TARGET" ]; then
+              continue
+            fi
+
+            # Skip branches that have nothing the target doesn't already have.
+            if [ -z "$(git rev-list "$TARGET..origin/$branch")" ]; then
+              uptodate+=("$branch")
+              continue
+            fi
+
+            echo "::group::Merging $branch"
+            if git merge --no-ff --no-edit -m "Auto-merge $branch into $TARGET" "origin/$branch"; then
+              echo "Merged $branch"
+              merged+=("$branch")
+            else
+              echo "Conflict merging $branch — leaving it untouched"
+              git merge --abort
+              conflicted+=("$branch")
+            fi
+            echo "::endgroup::"
+          done
+
+          # A single push for everything merged this run. Pushes made with the
+          # built-in GITHUB_TOKEN do not retrigger workflows, so no merge loop.
+          if [ ${#merged[@]} -gt 0 ]; then
+            git push origin "HEAD:$TARGET"
+          else
+            echo "Nothing new to merge."
+          fi
+
+          # Run summary (Actions > this run > Summary).
+          {
+            echo "## Auto-merge summary"
+            echo ""
+            echo "**Target:** \`$TARGET\`"
+            echo ""
+            echo "### Merged (${#merged[@]})"
+            if [ ${#merged[@]} -eq 0 ]; then echo "_none_"; else
+              for b in "${merged[@]}"; do echo "- \`$b\`"; done
+            fi
+            echo ""
+            echo "### Skipped — merge conflict (${#conflicted[@]})"
+            if [ ${#conflicted[@]} -eq 0 ]; then echo "_none_"; else
+              for b in "${conflicted[@]}"; do echo "- \`$b\` — resolve manually"; done
+            fi
+            echo ""
+            echo "### Already up to date (${#uptodate[@]})"
+            if [ ${#uptodate[@]} -eq 0 ]; then echo "_none_"; else
+              for b in "${uptodate[@]}"; do echo "- \`$b\`"; done
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
