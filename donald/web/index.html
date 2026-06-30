@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Donald</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main>
+    <!-- The orb: Donald's face. Pulses while listening, glows while speaking. -->
+    <div id="orb" class="idle" role="img" aria-label="Donald">
+      <div class="ring"></div>
+      <div class="core"></div>
+    </div>
+
+    <p id="status" class="status">Click “Wake Donald”, allow the mic, then say <b>“Donald”</b>.</p>
+
+    <!-- Live transcript: you on the left, Donald on the right. -->
+    <section id="transcript" class="transcript" aria-live="polite"></section>
+
+    <div class="controls">
+      <button id="start" class="primary">Wake Donald</button>
+      <button id="ptt" title="Hold to talk (skip the wake word)">Push&nbsp;to&nbsp;Talk</button>
+      <label class="mute"><input type="checkbox" id="mute" /> Mute voice</label>
+    </div>
+    <p id="hint" class="hint"></p>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
