@@ -15,9 +15,12 @@ On each run it:
    - **Conflict** → aborted and left untouched, then listed in the run summary
      so you can resolve it by hand.
 4. Pushes the target once, with all clean merges from that run.
+5. Deletes each branch that is now fully merged into the target (its commits
+   live on in the target, so nothing is lost). Branches that conflicted are
+   never deleted. Deletion only runs after the merge push succeeds.
 
-Nothing is deleted — branches are merged in, not removed. No pull requests are
-opened.
+No pull requests are opened. To merge-only and keep the source branches, set
+`env.DELETE_MERGED` to `"false"` in the workflow.
 
 ## When it runs
 
@@ -40,5 +43,7 @@ repository's **default branch**. Until then, either:
 
 - **Target branch** — change `env.TARGET_BRANCH` in the workflow.
 - **Frequency** — change the `cron` expression.
-- **Conflicts** — conflicting branches are reported, never force-merged. Resolve
-  them manually; the next sweep will pick them up once clean.
+- **Deletion** — `env.DELETE_MERGED` (`"true"` by default). Set to `"false"` to
+  keep merged branches around.
+- **Conflicts** — conflicting branches are reported, never force-merged and
+  never deleted. Resolve them manually; the next sweep picks them up once clean.
