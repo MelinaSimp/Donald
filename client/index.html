@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Voice Agent — Latency Reference</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+      #log { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; height: 260px; overflow-y: auto; background: #fafafa; white-space: pre-wrap; font-size: 14px; }
+      .row { display: flex; gap: .5rem; margin: 1rem 0; }
+      input { flex: 1; padding: .6rem; font-size: 16px; }
+      button { padding: .6rem 1rem; font-size: 16px; cursor: pointer; }
+      #orb { width: 16px; height: 16px; border-radius: 50%; background: #bbb; display: inline-block; vertical-align: middle; margin-right: .5rem; }
+      #orb.speaking { background: #2a8; box-shadow: 0 0 8px #2a8; }
+      .meta { color: #888; font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <h1><span id="orb"></span>Voice Agent — Latency Reference</h1>
+    <p class="meta" id="cfg">connecting…</p>
+    <div id="log"></div>
+    <div class="row">
+      <input id="text" placeholder="Type a message and press Enter…" autofocus />
+      <button id="send">Send</button>
+      <button id="stop">Stop</button>
+    </div>
+    <audio id="player"></audio>
+    <script src="/static/audio-queue.js"></script>
+  </body>
+</html>

@@ -1,0 +1,6 @@
+# Dev/test dependencies. The library itself only needs requirements.txt.
+-r requirements.txt
+pytest>=8
+# Optional: enables the push-based file-watch loop (serve_with_watchdog).
+# Hot-reload also works without it via interval polling (serve()).
+watchdog>=3
