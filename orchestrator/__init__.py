@@ -16,6 +16,13 @@ from .confirmation import (
     DenyAll,
 )
 from .events import EventEmitter, Observer
+from .handoff import (
+    CallbackHandoffApprover,
+    HandoffApprover,
+    HandoffRecommendation,
+    HoldForHuman,
+    make_handoff_tool,
+)
 from .llm import LLM, DEFAULT_MODEL
 from .orchestrator import Orchestrator, RoutingDecision, RouteStep
 from .registry import Tool, ToolRegistry, ToolView
@@ -34,6 +41,11 @@ __all__ = [
     "DenyAll",
     "EventEmitter",
     "Observer",
+    "CallbackHandoffApprover",
+    "HandoffApprover",
+    "HandoffRecommendation",
+    "HoldForHuman",
+    "make_handoff_tool",
     "LLM",
     "DEFAULT_MODEL",
     "Orchestrator",

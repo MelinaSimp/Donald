@@ -25,6 +25,12 @@ from dataclasses import dataclass, field
 from .agent import Agent, AgentManifest, AgentResult
 from .confirmation import Approver
 from .events import EventEmitter, Observer
+from .handoff import (
+    HandoffApprover,
+    HandoffRecommendation,
+    HoldForHuman,
+    format_offer,
+)
 from .llm import LLM, DEFAULT_MODEL
 from .registry import ToolRegistry
 
@@ -211,6 +217,44 @@ class Orchestrator:
             )
         self._events.emit("dispatch.done", agent=name, converged=result.converged)
         return result
+
+    # --- Tier 5: handoffs (propose, don't chain) -----------------------
+
+    def offer(self, recommendation: HandoffRecommendation) -> str:
+        """Render a proposed handoff as a conversational offer. No side effects.
+
+        This only *surfaces* the proposal — it never dispatches. The caller
+        shows this to the human and waits.
+        """
+        self._events.emit("handoff.offered", target=recommendation.target_agent)
+        return format_offer(recommendation)
+
+    def accept_handoff(self, recommendation: HandoffRecommendation) -> AgentResult:
+        """Dispatch a handoff the human has approved — the only path that runs it."""
+        if recommendation.target_agent not in self._agents:
+            raise ValueError(
+                f"handoff target is not a registered agent: {recommendation.target_agent!r}"
+            )
+        self._events.emit("handoff.accepted", target=recommendation.target_agent)
+        return self._safe_run(recommendation.target_agent, recommendation.task)
+
+    def review_handoff(
+        self,
+        recommendation: HandoffRecommendation,
+        approver: HandoffApprover | None = None,
+    ) -> tuple[bool, AgentResult | None]:
+        """Surface the offer, then dispatch ONLY if the approver says yes.
+
+        The default approver is `HoldForHuman` — it never accepts, so nothing
+        is dispatched until a human explicitly approves the edge. Pass a
+        `CallbackHandoffApprover` to wire in a UI decision or automate a test.
+        """
+        approver = approver or HoldForHuman()
+        self.offer(recommendation)
+        if approver.decide(recommendation):
+            return True, self.accept_handoff(recommendation)
+        self._events.emit("handoff.declined", target=recommendation.target_agent)
+        return False, None
 
 
 def _first_json(response) -> dict:

@@ -11,6 +11,7 @@ import ast
 import operator
 from typing import Any
 
+from .handoff import make_handoff_tool
 from .registry import Tool, ToolRegistry
 
 # --- calculator --------------------------------------------------------------
@@ -85,4 +86,7 @@ def build_default_registry() -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(CALCULATOR)
     registry.register(WORD_COUNT)
+    # The Tier 5 handoff control tool. Agents that may propose a handoff get
+    # `propose_handoff` in their allowlist; others simply don't.
+    registry.register(make_handoff_tool())
     return registry

@@ -5,7 +5,7 @@ what, with which tools, under what limits, and what happens when something
 goes wrong. Built tier by tier; each tier is independently shippable.
 
 - **Stack:** Python, Anthropic SDK (`claude-opus-4-8`, adaptive thinking).
-- **Status:** Tiers 1–4 landed. Tiers 5–6 to follow.
+- **Status:** Tiers 1–5 landed. Tier 6 to follow.
 
 ## The six tiers
 
@@ -15,7 +15,7 @@ goes wrong. Built tier by tier; each tier is independently shippable.
 | 2 | Least-privilege tool scoping + bounded execution | **done** |
 | 3 | Failure isolation at every boundary | **done** |
 | 4 | Human-in-the-loop confirmation gates | **done** |
-| 5 | Handoff system (propose, don't chain) | planned |
+| 5 | Handoff system (propose, don't chain) | **done** |
 | 6 | Live hot-reload (config-driven runtime) | planned |
 
 ## What's here (Tier 2)
@@ -76,6 +76,22 @@ Destructive/irreversible actions stop and ask first — and the gate lives in th
 - The default approver is **`DenyAll`** (fail-safe). Swap in `AllowAll`,
   `CallbackApprover` (policy/UI hook), or `ConsoleApprover` (interactive y/N).
 
+## What's here (Tier 5)
+
+Agents **propose** the next edge of the work graph; the human approves it. No
+agent dispatches another directly:
+
+- An agent that may hand off has the `propose_handoff` control tool in its
+  allowlist (handoff capability is itself least-privilege). The agent loop
+  intercepts it and records a typed `HandoffRecommendation` —
+  `target_agent`, `reason`, `task`, `artifacts` (references only),
+  `preconditions`, `confidence` — without dispatching anything.
+- The orchestrator surfaces it as a conversational offer (`offer`) and waits;
+  `review_handoff` dispatches **only** on explicit approval. The default
+  `HoldForHuman` approver never auto-accepts.
+- Artifacts must be references (paths/IDs/URLs); inlined blobs are rejected, so
+  handoffs stay small and serializable.
+
 ## Quickstart
 
 ```bash
@@ -86,6 +102,7 @@ python demo.py --dry
 python demo_routing.py --dry
 python demo_isolation.py
 python demo_confirm.py
+python demo_handoff.py
 
 # Live (needs ANTHROPIC_API_KEY):
 export ANTHROPIC_API_KEY=sk-ant-...

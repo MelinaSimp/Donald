@@ -26,6 +26,7 @@ from typing import Any
 
 from .confirmation import Approver, ConfirmationDecision, ConfirmationRequest, DenyAll
 from .events import EventEmitter
+from .handoff import HANDOFF_TOOL_NAME, HandoffRecommendation, parse_handoff
 from .llm import LLM, DEFAULT_MODEL
 from .registry import ToolRegistry, ToolView
 
@@ -58,6 +59,7 @@ class AgentResult:
     converged: bool
     stop_reason: str | None = None
     error: str | None = None  # short log string when a boundary boxed a failure
+    handoff: "HandoffRecommendation | None" = None  # Tier 5: proposed next step
 
 
 class Agent:
@@ -93,6 +95,9 @@ class Agent:
         tool_schemas = self.tools.schemas()
         messages: list[dict] = [{"role": "user", "content": task}]
         last_stop: str | None = None
+        # A handoff proposed mid-run rides out on the final result. It is never
+        # acted on here — the orchestrator surfaces it to the human (Tier 5).
+        pending_handoff: HandoffRecommendation | None = None
 
         for i in range(1, m.max_iterations + 1):
             response = llm.complete(
@@ -115,15 +120,24 @@ class Agent:
                     iterations=i,
                     converged=True,
                     stop_reason=last_stop,
+                    handoff=pending_handoff,
                 )
 
             # Execute each requested tool and feed all results back in a single
             # user turn (the API expects one tool_result per tool_use, batched).
-            tool_results = [
-                self._execute_tool_call(block.name, dict(block.input), block.id)
-                for block in response.content
-                if getattr(block, "type", None) == "tool_use"
-            ]
+            tool_results = []
+            for block in response.content:
+                if getattr(block, "type", None) != "tool_use":
+                    continue
+                if block.name == HANDOFF_TOOL_NAME:
+                    result, pending_handoff = self._record_handoff(
+                        dict(block.input), block.id, pending_handoff
+                    )
+                    tool_results.append(result)
+                else:
+                    tool_results.append(
+                        self._execute_tool_call(block.name, dict(block.input), block.id)
+                    )
             messages.append({"role": "user", "content": tool_results})
 
         # Loop exhausted without the model finishing — bounded, not hung.
@@ -133,7 +147,49 @@ class Agent:
             iterations=m.max_iterations,
             converged=False,
             stop_reason=last_stop,
+            handoff=pending_handoff,
         )
+
+    def _record_handoff(
+        self,
+        raw: dict[str, Any],
+        tool_use_id: str,
+        previous: HandoffRecommendation | None,
+    ) -> tuple[dict[str, Any], HandoffRecommendation | None]:
+        """Capture a proposed handoff without dispatching anything.
+
+        Tier 5: the agent only *proposes*. We record the latest valid proposal
+        and tell the model it's queued for human review — never that it ran. An
+        invalid proposal (e.g. inline artifacts) is returned as an error so the
+        model can fix it.
+        """
+        try:
+            rec = parse_handoff(self.manifest.name, raw)
+        except ValueError as exc:
+            return (
+                _tool_result(
+                    tool_use_id,
+                    json.dumps({"error": f"invalid handoff: {exc}"}),
+                    is_error=True,
+                ),
+                previous,
+            )
+        self._events.emit(
+            "handoff.proposed",
+            agent=self.manifest.name,
+            target=rec.target_agent,
+            confidence=rec.confidence,
+        )
+        ack = _tool_result(
+            tool_use_id,
+            json.dumps(
+                {
+                    "handoff": "recorded; awaiting human approval — do not assume it ran"
+                }
+            ),
+            is_error=False,
+        )
+        return ack, rec
 
     def _execute_tool_call(
         self, name: str, tool_input: dict[str, Any], tool_use_id: str
