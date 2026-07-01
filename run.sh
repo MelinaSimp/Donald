@@ -7,6 +7,10 @@
 #   ./run.sh --listen    Also start the always-on wake listener, so you can
 #                        say "Donald" from anywhere and the app opens itself.
 #                        (Installs the offline voice deps + model on first run.)
+#   ./run.sh --computer  Let Hermes see the screen and click/type any app
+#                        (installs pyautogui; needs macOS Accessibility + Screen
+#                        Recording permission for your terminal).
+#   Flags combine, e.g.: ./run.sh --listen --computer
 #
 # It creates a local virtualenv, installs dependencies, loads your API key from
 # a .env file if present, and starts everything. Re-running is cheap — setup
@@ -18,7 +22,14 @@ cd "$(dirname "$0")"
 VENV=".venv"
 PY="$VENV/bin/python"
 WITH_LISTENER=0
-[ "${1:-}" = "--listen" ] && WITH_LISTENER=1
+WITH_COMPUTER=0
+for arg in "$@"; do
+  case "$arg" in
+    --listen) WITH_LISTENER=1 ;;
+    --computer) WITH_COMPUTER=1 ;;
+    *) echo "Unknown flag: $arg (use --listen and/or --computer)" >&2; exit 1 ;;
+  esac
+done
 
 say() { printf "\033[1;33m▸ %s\033[0m\n" "$1"; }   # gold, on-brand
 die() { printf "\033[1;31m✗ %s\033[0m\n" "$1" >&2; exit 1; }
@@ -63,6 +74,19 @@ if [ "$WITH_LISTENER" = "1" ]; then
   fi
 fi
 
+# --- 4b. Optional: computer-use (see/click/type any app) ----------------------
+APP_FLAGS=()
+if [ "$WITH_COMPUTER" = "1" ]; then
+  say "Setting up computer-use (screen control)…"
+  "$PY" -c "import pyautogui" >/dev/null 2>&1 || "$PY" -m pip install --quiet pyautogui pillow \
+    || die "Could not install pyautogui. See docs/voice-desktop-assistant.md."
+  if [ "$(uname)" = "Darwin" ]; then
+    echo "  (macOS) Grant your terminal 'Accessibility' AND 'Screen Recording' in"
+    echo "          System Settings > Privacy & Security, or clicks/screenshots won't work."
+  fi
+  APP_FLAGS+=(--computer-use)
+fi
+
 # --- 5. Launch ----------------------------------------------------------------
 PIDS=()
 cleanup() { for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done; }
@@ -70,11 +94,11 @@ trap cleanup EXIT INT TERM
 
 if [ "$WITH_LISTENER" = "1" ]; then
   say "Starting Donald (server + wake listener). Say \"Donald\" from anywhere. Ctrl-C to stop."
-  "$PY" -m donald.app --no-browser & PIDS+=("$!")
+  "$PY" -m donald.app --no-browser "${APP_FLAGS[@]:-}" & PIDS+=("$!")
   sleep 1
   "$PY" -m donald.listener & PIDS+=("$!")
   wait
 else
   say "Starting Donald. The UI will open — click \"Wake Donald\", allow the mic, say \"Donald\". Ctrl-C to stop."
-  "$PY" -m donald.app
+  "$PY" -m donald.app "${APP_FLAGS[@]:-}"
 fi

@@ -131,21 +131,27 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(200, path.read_bytes(), ctype)
 
 
-def build_brain(dry_run: bool = False) -> DonaldBrain:
+def build_brain(dry_run: bool = False, computer_use: bool = False) -> DonaldBrain:
     """Construct the brain, wiring a real Anthropic client when a key exists."""
     from anthropic import Anthropic
 
     client = Anthropic()
-    return DonaldBrain(client=client, hermes=Hermes(dry_run=dry_run))
+    hermes = Hermes(dry_run=dry_run, enable_computer_use=computer_use)
+    return DonaldBrain(client=client, hermes=hermes)
 
 
-def serve(port: int = DEFAULT_PORT, open_browser: bool = True, dry_run: bool = False) -> None:
+def serve(
+    port: int = DEFAULT_PORT,
+    open_browser: bool = True,
+    dry_run: bool = False,
+    computer_use: bool = False,
+) -> None:
     """Start the local server and (optionally) open the UI."""
     if not os.environ.get("ANTHROPIC_API_KEY"):
         raise SystemExit(
             "Set ANTHROPIC_API_KEY so Donald can think. (export ANTHROPIC_API_KEY=sk-...)"
         )
-    brain = build_brain(dry_run=dry_run)
+    brain = build_brain(dry_run=dry_run, computer_use=computer_use)
     httpd = _DonaldServer((HOST, port), _Handler, brain)
     url = f"http://{HOST}:{port}/"
     print(f"Donald is live at {url}  (Ctrl-C to shut it down)")
@@ -169,8 +175,18 @@ def main() -> None:
     parser.add_argument(
         "--dry-run", action="store_true", help="Hermes describes actions instead of running them"
     )
+    parser.add_argument(
+        "--computer-use",
+        action="store_true",
+        help="let Hermes see the screen and click/type any app (needs pyautogui + OS permissions)",
+    )
     args = parser.parse_args()
-    serve(port=args.port, open_browser=not args.no_browser, dry_run=args.dry_run)
+    serve(
+        port=args.port,
+        open_browser=not args.no_browser,
+        dry_run=args.dry_run,
+        computer_use=args.computer_use,
+    )
 
 
 if __name__ == "__main__":

@@ -67,6 +67,7 @@ Donald's brain as tools, plus a confirmation handshake:
 - `open_app(name)` — launch a desktop app (OS-aware: `open -a` / `start` / `gtk-launch`).
 - `open_url(url)` — open a URL in the default browser.
 - `confirm_action(token)` — run a previously gated command the user just approved.
+- `computer` — **(opt-in)** see the screen and click/type/scroll any app. See below.
 
 Every `run_shell` passes through `security.approval.ApprovalGate`:
 
@@ -81,6 +82,34 @@ Every `run_shell` passes through `security.approval.ApprovalGate`:
 Subprocesses are spawned with `security.subprocess_env.shell_minimal()` so the
 Anthropic key and other secrets never leak into a child process, and all output
 is passed through `security.log_redact.redact()`.
+
+## Computer-use — see and operate any app (opt-in)
+
+Shell tools are blind: they can't run an app that has no command line. Computer-
+use fills that gap. When enabled, Donald gets Anthropic's native `computer` tool;
+the model looks at a screenshot and emits actions (move, click, type, key,
+scroll), which `ComputerController` (`donald/hermes/computer.py`) performs on the
+real display and answers with a fresh screenshot. The brain routes this through
+the beta endpoint and feeds the screenshots back to the model as images.
+
+```bash
+./run.sh --computer            # or: python -m donald.app --computer-use
+```
+
+- **Deps:** `pip install pyautogui pillow` (run.sh does this for you).
+- **macOS permissions:** grant your terminal **Accessibility** *and* **Screen
+  Recording** in System Settings → Privacy & Security, or clicks and screenshots
+  silently fail.
+- **Off by default.** It's the most powerful — and least contained — thing
+  Hermes can do (a click can press any on-screen button), so it's opt-in,
+  supports `--dry-run`, and the brain is instructed to get a spoken "yes" before
+  anything consequential (buying, sending, deleting). It still prefers the
+  faster, safer shell tools when they can do the job.
+
+> The current engine drives the machine via shell + OS scripting *and* now
+> computer-use. Shell is faster and precise; computer-use is the fallback for
+> arbitrary GUI. Wiring the master-plan MCP skills (Gmail, Drive, …) as Hermes
+> tools is the next expansion — same voice → brain → gated-action path.
 
 ## Safety & trust model
 
@@ -139,11 +168,8 @@ The engine is structured so new powers are additive:
 
 - **More Hermes tools.** Add a method to `Hermes`, a spec to `TOOL_SPECS`, and a
   branch to `dispatch()`. Wire risky ones through the `ApprovalGate`.
-- **Computer-use (screenshot + click).** The current engine drives the machine
-  via shell + OS scripting (fast, precise). For arbitrary GUI control, add a
-  computer-use adapter as another Hermes method/tool — the brain loop and the
-  confirmation handshake already accommodate it. This is the documented next
-  step toward the "control any app" goal.
+- **Computer-use (screenshot + click) — built, opt-in.** For apps with no CLI,
+  Hermes can drive the screen directly. See the section below.
 - **The other pillars.** The MCP integrations in the master plan (Gmail, Drive,
   Apollo, Twilio, …) become Hermes tools the same way, so "Donald, email this"
   flows through the identical voice → brain → gated-action path.

@@ -59,6 +59,18 @@ _OPERATOR_BRIEFING = (
     "that didn't happen."
 )
 
+# Extra briefing when the computer-use tool is enabled (see/click/type any app).
+_COMPUTER_BRIEFING = (
+    "\n## You can see and use the screen (computer tool)\n"
+    "You have a 'computer' tool: take a screenshot, then move/click/type/scroll "
+    "to operate ANY app, even ones with no command line. Use it only when the "
+    "shell can't do the job. Always screenshot first to see where things are, "
+    "act, then screenshot to confirm. This can press ANY button on screen, so "
+    "before anything consequential — buying, sending, deleting, posting — stop "
+    "and get the user's spoken yes first. When a shell command would be faster "
+    "and safer, prefer it."
+)
+
 
 @dataclass
 class TurnResult:
@@ -102,10 +114,41 @@ class DonaldBrain:
         self.personality_text = personality_text or load_personality()
         self.conversation = conversation or ConversationManager()
 
+    @property
+    def _computer_on(self) -> bool:
+        return bool(getattr(self.hermes, "enable_computer_use", False))
+
     def _system(self) -> list:
         system = build_system_prompt(self.personality_text)
         system.append({"type": "text", "text": _OPERATOR_BRIEFING})
+        if self._computer_on:
+            system.append({"type": "text", "text": _COMPUTER_BRIEFING})
         return system
+
+    def _tools(self) -> list:
+        tools = list(TOOL_SPECS)
+        if self._computer_on:
+            from .hermes.computer import computer_tool_spec
+
+            w, h = self.hermes.computer.size
+            tools.append(computer_tool_spec(w, h))
+        return tools
+
+    def _create(self, messages: list):
+        """One model call — via the beta endpoint when computer-use is on."""
+        kwargs = dict(
+            model=MODEL,
+            system=self._system(),
+            messages=messages,
+            tools=self._tools(),
+            max_tokens=MAX_TOKENS,
+            temperature=TEMPERATURE,
+        )
+        if self._computer_on:
+            from .hermes.computer import COMPUTER_BETA_FLAG
+
+            return self.client.beta.messages.create(betas=[COMPUTER_BETA_FLAG], **kwargs)
+        return self.client.messages.create(**kwargs)
 
     def take_turn(self, user_text: str) -> TurnResult:
         """Run one full spoken turn: reason, act through Hermes, reply."""
@@ -117,14 +160,7 @@ class DonaldBrain:
             messages = self.conversation.messages_for_api()
             append_voice_cue(messages)  # API-only; rides the last real utterance
 
-            response = self.client.messages.create(
-                model=MODEL,
-                system=self._system(),
-                messages=messages,
-                tools=TOOL_SPECS,
-                max_tokens=MAX_TOKENS,
-                temperature=TEMPERATURE,
-            )
+            response = self._create(messages)
 
             content = _blocks_to_dicts(response.content)
             self.conversation.add_assistant_message(content)
@@ -136,6 +172,9 @@ class DonaldBrain:
             tool_results = []
             for block in content:
                 if block.get("type") != "tool_use":
+                    continue
+                if block["name"] == "computer":
+                    tool_results.append(self._run_computer(block, actions))
                     continue
                 result = dispatch(self.hermes, block["name"], block.get("input", {}))
                 actions.append(result.to_dict())
@@ -156,3 +195,35 @@ class DonaldBrain:
             actions=actions,
             awaiting_confirmation=awaiting,
         )
+
+    def _run_computer(self, block: dict, actions: List[dict]) -> dict:
+        """Execute a computer-use action and build an (image-bearing) tool_result."""
+        params = dict(block.get("input", {}))
+        sub = params.pop("action", "screenshot")
+        result = self.hermes.computer_action(sub, **params)
+        actions.append(
+            {
+                "ok": result.ok,
+                "action": f"computer:{sub}",
+                "summary": result.summary(),
+                "detail": "",
+                "needs_confirmation": False,
+                "confirm_token": None,
+            }
+        )
+        content: list = [{"type": "text", "text": result.output or result.summary()}]
+        if result.image_b64:
+            content.append(
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": result.image_b64,
+                    },
+                }
+            )
+        tr = {"type": "tool_result", "tool_use_id": block["id"], "content": content}
+        if not result.ok:
+            tr["is_error"] = True
+        return tr

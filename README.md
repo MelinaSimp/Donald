@@ -23,6 +23,8 @@ You ──"Donald, …"──▶  browser UI  ──speech-to-text──▶  DON
   runs shell commands, opens apps, and opens URLs. Every shell command flows
   through the repo's `security.approval.ApprovalGate`: destructive commands are
   hard-blocked, risky ones make Donald *ask you out loud* before running.
+  Opt-in **computer-use** (`./run.sh --computer`) lets Hermes also see the
+  screen and click/type any app that has no command line.
 - **Voice + UI** live in the browser (`donald/web/`): wake-word detection,
   speech-to-text, and Donald's spoken voice all use the Web Speech API — no
   native audio dependencies, works on macOS / Windows / Linux.

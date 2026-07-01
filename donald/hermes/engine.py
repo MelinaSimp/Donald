@@ -83,9 +83,12 @@ class Hermes:
     approval: ApprovalGate = field(default_factory=lambda: ApprovalGate(mode="smart"))
     dry_run: bool = False
     platform: str = field(default_factory=detect_platform)
+    # Computer-use (see/click/type any app) is powerful and opt-in — off here.
+    enable_computer_use: bool = False
     # Pending confirmations: token -> the thunk that runs the approved command.
     _pending: dict = field(default_factory=dict, repr=False)
     _counter: int = field(default=0, repr=False)
+    _computer: object = field(default=None, repr=False)
 
     # -- shell -------------------------------------------------------------
     def run_shell(self, command: str, confirmed: bool = False) -> ActionResult:
@@ -181,6 +184,20 @@ class Hermes:
         except Exception as exc:  # pragma: no cover - defensive
             return ActionResult(False, "open_url", f"Browser wouldn't open: {redact(str(exc))}", url)
         return ActionResult(True, "open_url", f"Pulling up {url}.", url)
+
+    # -- computer-use (see/click/type any app) ----------------------------
+    @property
+    def computer(self):
+        """Lazily build the computer-use controller (shares dry_run)."""
+        if self._computer is None:
+            from .computer import ComputerController
+
+            self._computer = ComputerController(dry_run=self.dry_run)
+        return self._computer
+
+    def computer_action(self, action: str, **params):
+        """Execute one computer-use action; returns a ``ComputerResult``."""
+        return self.computer.execute(action, **params)
 
     # -- confirmation handshake -------------------------------------------
     def _stash(self, thunk: Callable[[], ActionResult]) -> str:
