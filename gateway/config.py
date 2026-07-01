@@ -46,11 +46,18 @@ class Settings:
     donald_max_tokens: int
     donald_temperature: float
 
-    # --- Hermes (local OpenAI-compatible agent server) ---
+    # --- Hermes (local agent) ---
+    # mode="http": talk to an OpenAI-compatible Hermes API server.
+    # mode="cli":  drive Hermes' one-shot CLI (optionally via `docker exec`).
+    hermes_mode: str
     hermes_base_url: str
     hermes_api_key: Optional[str]
     hermes_model: str
     hermes_timeout_s: float
+    # CLI-mode knobs (ignored in http mode):
+    hermes_docker_container: Optional[str]
+    hermes_cli_path: str
+    hermes_cli_extra_args: List[str]
 
     # --- Voice (ElevenLabs TTS) ---
     voice_enabled: bool
@@ -76,9 +83,11 @@ class Settings:
         return {
             "donald_model": self.donald_model,
             "anthropic_api_key": bool(self.anthropic_api_key),
+            "hermes_mode": self.hermes_mode,
             "hermes_base_url": self.hermes_base_url,
             "hermes_api_key": bool(self.hermes_api_key),
             "hermes_model": self.hermes_model,
+            "hermes_docker_container": self.hermes_docker_container,
             "voice_enabled": self.voice_enabled,
             "elevenlabs_api_key": bool(self.elevenlabs_api_key),
             "elevenlabs_voice_id": self.elevenlabs_voice_id,
@@ -95,11 +104,18 @@ def load_settings() -> Settings:
         donald_model=os.environ.get("DONALD_MODEL", "claude-opus-4-8"),
         donald_max_tokens=_env_int("DONALD_MAX_TOKENS", 1024),
         donald_temperature=float(os.environ.get("DONALD_TEMPERATURE", "0.8")),
+        hermes_mode=os.environ.get("HERMES_MODE", "http").strip().lower(),
         # Hermes defaults match its API server: 127.0.0.1:8642, OpenAI-compatible.
         hermes_base_url=os.environ.get("HERMES_BASE_URL", "http://127.0.0.1:8642"),
         hermes_api_key=os.environ.get("HERMES_API_KEY"),
         hermes_model=os.environ.get("HERMES_MODEL", "hermes"),
-        hermes_timeout_s=float(os.environ.get("HERMES_TIMEOUT_S", "120")),
+        # Local models can be slow (cold-load + tool loops); default generous.
+        hermes_timeout_s=float(os.environ.get("HERMES_TIMEOUT_S", "300")),
+        hermes_docker_container=os.environ.get("HERMES_DOCKER_CONTAINER") or None,
+        hermes_cli_path=os.environ.get(
+            "HERMES_CLI_PATH", "/opt/hermes/.venv/bin/hermes"
+        ),
+        hermes_cli_extra_args=_env_list("HERMES_CLI_EXTRA_ARGS", ["--yolo"]),
         voice_enabled=_env_bool("VOICE_ENABLED", False),
         elevenlabs_api_key=os.environ.get("ELEVENLABS_API_KEY"),
         # Default is Donald's voice; override per-deployment if you reclone it.

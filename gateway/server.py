@@ -43,12 +43,23 @@ def build_orchestrator(settings: Settings) -> DonaldOrchestrator:
         ) from exc
 
     llm = AsyncAnthropic(api_key=settings.anthropic_api_key)
-    hermes = HermesConnector(
-        base_url=settings.hermes_base_url,
-        api_key=settings.hermes_api_key,
-        model=settings.hermes_model,
-        timeout_s=settings.hermes_timeout_s,
-    )
+    if settings.hermes_mode == "cli":
+        from .connectors.hermes_cli import HermesCliConnector
+
+        hermes = HermesCliConnector(
+            container=settings.hermes_docker_container,
+            cli_path=settings.hermes_cli_path,
+            extra_args=settings.hermes_cli_extra_args,
+            model=settings.hermes_model if settings.hermes_model != "hermes" else None,
+            timeout_s=settings.hermes_timeout_s,
+        )
+    else:
+        hermes = HermesConnector(
+            base_url=settings.hermes_base_url,
+            api_key=settings.hermes_api_key,
+            model=settings.hermes_model,
+            timeout_s=settings.hermes_timeout_s,
+        )
     voice = ElevenLabsVoice(
         api_key=settings.elevenlabs_api_key,
         voice_id=settings.elevenlabs_voice_id,
@@ -97,11 +108,17 @@ def create_app(
     @app.get("/health")
     async def health() -> dict:
         hermes_ok = await orch.hermes.health()
+        hermes_target = (
+            (settings.hermes_docker_container or "local CLI")
+            if settings.hermes_mode == "cli"
+            else settings.hermes_base_url
+        )
         return {
             "status": "ok",
             "donald_model": settings.donald_model,
             "anthropic_configured": bool(settings.anthropic_api_key),
-            "hermes_url": settings.hermes_base_url,
+            "hermes_mode": settings.hermes_mode,
+            "hermes_target": hermes_target,
             "hermes_reachable": hermes_ok,
             "voice_configured": settings.voice_configured,
         }

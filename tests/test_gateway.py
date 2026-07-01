@@ -9,6 +9,7 @@ import asyncio
 from gateway.config import load_settings
 from gateway.connectors.base import ConnectorResult
 from gateway.connectors.hermes import HermesConnector
+from gateway.connectors.hermes_cli import HermesCliConnector
 from gateway.connectors.voice import ElevenLabsVoice, VoiceResult
 from gateway.orchestrator import DonaldOrchestrator, Session
 
@@ -162,6 +163,86 @@ def test_hermes_health():
     http = FakeHTTP(get_resp=FakeResp(status_code=200))
     h = HermesConnector(client=http)
     assert run(h.health()) is True
+
+
+# --------------------------------------------------------------------------
+# Hermes CLI connector (docker exec / one-shot)
+# --------------------------------------------------------------------------
+def _fake_runner(code=0, out="", err="", record=None):
+    async def runner(argv, timeout_s):
+        if record is not None:
+            record.append({"argv": argv, "timeout": timeout_s})
+        return code, out, err
+
+    return runner
+
+
+def test_hermes_cli_execute_success():
+    calls = []
+    conn = HermesCliConnector(
+        container="hermes-agent",
+        runner=_fake_runner(0, "DONALD-HERMES-OK\n", record=calls),
+    )
+    result = run(conn.execute("say ok"))
+    assert result.ok
+    assert result.text == "DONALD-HERMES-OK"  # stripped
+    # Reaches Hermes via `docker exec <container> <cli> -z <task> --yolo`.
+    argv = calls[0]["argv"]
+    assert argv[:3] == ["docker", "exec", "hermes-agent"]
+    assert "-z" in argv and "say ok" in argv and "--yolo" in argv
+
+
+def test_hermes_cli_passes_model_and_context():
+    calls = []
+    conn = HermesCliConnector(
+        container="c", model="hermes3:latest", runner=_fake_runner(0, "ok", record=calls)
+    )
+    run(conn.execute("do it", context="be brief"))
+    argv = calls[0]["argv"]
+    assert "-m" in argv and "hermes3:latest" in argv
+    # context is prepended into the single prompt argument
+    prompt = argv[argv.index("-z") + 1]
+    assert prompt.startswith("be brief") and "do it" in prompt
+
+
+def test_hermes_cli_no_container_runs_directly():
+    calls = []
+    conn = HermesCliConnector(container=None, runner=_fake_runner(0, "hi", record=calls))
+    run(conn.execute("hey"))
+    argv = calls[0]["argv"]
+    assert argv[0].endswith("hermes")  # no `docker exec` prefix
+    assert "exec" not in argv
+
+
+def test_hermes_cli_nonzero_exit_is_error():
+    conn = HermesCliConnector(
+        container="c", runner=_fake_runner(1, "", "model 'x' not found")
+    )
+    result = run(conn.execute("go"))
+    assert not result.ok
+    assert "exited 1" in result.error and "not found" in result.error
+
+
+def test_hermes_cli_empty_output_is_error():
+    conn = HermesCliConnector(container="c", runner=_fake_runner(0, "   \n"))
+    result = run(conn.execute("go"))
+    assert not result.ok
+    assert "no output" in result.error
+
+
+def test_hermes_cli_empty_task_short_circuits():
+    calls = []
+    conn = HermesCliConnector(container="c", runner=_fake_runner(0, "x", record=calls))
+    result = run(conn.execute("   "))
+    assert not result.ok
+    assert calls == []  # never shelled out
+
+
+def test_hermes_cli_health_checks_version():
+    calls = []
+    conn = HermesCliConnector(container="c", runner=_fake_runner(0, "v1", record=calls))
+    assert run(conn.health()) is True
+    assert "--version" in calls[0]["argv"]
 
 
 # --------------------------------------------------------------------------
