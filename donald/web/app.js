@@ -8,13 +8,20 @@
   "use strict";
 
   const WAKE_WORD = "donald";
+  // Kept in sync with donald/killswitch.py — caught locally so "stop" never
+  // has to wait on the model or the network round-trip.
+  const STOP_PHRASES = ["stop", "freeze", "kill switch", "halt", "abort", "shut it down"];
+  const RESUME_PHRASES = ["resume", "wake up", "you're back", "unfreeze", "carry on", "go ahead"];
+
   const orb = document.getElementById("orb");
   const statusEl = document.getElementById("status");
   const transcriptEl = document.getElementById("transcript");
   const startBtn = document.getElementById("start");
   const pttBtn = document.getElementById("ptt");
+  const killBtn = document.getElementById("kill");
   const muteBox = document.getElementById("mute");
   const hintEl = document.getElementById("hint");
+  let paused = false;
 
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) {
@@ -80,8 +87,51 @@
     }
   }
 
+  async function setKill(engage) {
+    try {
+      const r = await fetch("/api/killswitch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: engage ? "engage" : "release" }),
+      });
+      paused = (await r.json()).paused;
+    } catch (_) {
+      paused = engage;
+    }
+    killBtn.classList.toggle("engaged", paused);
+    killBtn.textContent = paused ? "▶ Resume" : "■ Stop";
+    orb.classList.toggle("paused", paused);
+    if (paused) {
+      statusEl.textContent = "Halted. Say “resume” or click Resume.";
+      window.speechSynthesis && window.speechSynthesis.cancel();
+    } else {
+      statusEl.innerHTML = active ? 'Listening for <b>“Donald”</b>…' : "Ready.";
+    }
+  }
+
+  // Returns true if the utterance was a stop/resume command (already handled).
+  function handledAsControl(low) {
+    if (STOP_PHRASES.some((p) => low.includes(p))) {
+      addBubble("stop", "you");
+      setKill(true);
+      if (!muteBox.checked) speak("Stopped. I'll be right here.");
+      mode = "wake";
+      return true;
+    }
+    if (paused) {
+      if (RESUME_PHRASES.some((p) => low.includes(p))) {
+        setKill(false);
+        if (!muteBox.checked) speak("And we're back. Did you miss me?");
+      }
+      mode = "wake";
+      return true; // while paused, ignore everything except resume
+    }
+    return false;
+  }
+
   async function sendCommand(text) {
     if (!text) return;
+    if (handledAsControl(text.toLowerCase().trim())) return;
     busy = true;
     addBubble(text, "you");
     setOrb("thinking");
@@ -200,14 +250,30 @@
   pttBtn.addEventListener("mouseup", endPtt);
   pttBtn.addEventListener("mouseleave", endPtt);
 
+  killBtn.addEventListener("click", () => setKill(!paused));
+
+  // Proactivity: Donald can speak first. Poll for lines he wants to say
+  // (reminders, alerts) and voice them — this is what makes him feel alive.
+  setInterval(async () => {
+    try {
+      const r = await fetch("/api/events");
+      const data = await r.json();
+      (data.say || []).forEach((line) => {
+        addBubble(line, "donald");
+        speak(line);
+      });
+    } catch (_) {}
+  }, 3000);
+
   // Health check so the user knows the brain is wired up.
   fetch("/api/health")
     .then((r) => r.json())
     .then((h) => {
+      if (h.paused) setKill(true);
       if (!h.has_api_key) {
         hintEl.textContent = "⚠ ANTHROPIC_API_KEY isn't set — Donald can hear you but can't think yet.";
       } else {
-        hintEl.textContent = `Ready on ${h.platform}. Try: “Donald, what time is it?” or “Donald, open my browser.”`;
+        hintEl.textContent = `Ready on ${h.platform}. Try: “Donald, remind me in 1 minute to stretch.”`;
       }
     })
     .catch(() => {});

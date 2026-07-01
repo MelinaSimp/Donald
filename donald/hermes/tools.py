@@ -66,6 +66,25 @@ TOOL_SPECS = [
         },
     },
     {
+        "name": "set_reminder",
+        "description": (
+            "Remind the user out loud after a delay. Use when they say 'remind me "
+            "in N minutes/seconds to X'. Donald will speak up on his own when it's "
+            "due — the user doesn't have to ask again."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "seconds": {
+                    "type": "number",
+                    "description": "How many seconds from now to remind (e.g. 600 for 10 minutes).",
+                },
+                "message": {"type": "string", "description": "What to remind them about."},
+            },
+            "required": ["seconds", "message"],
+        },
+    },
+    {
         "name": "confirm_action",
         "description": (
             "Run a previously gated, risky action that the user has now approved "
@@ -101,6 +120,8 @@ def dispatch(hermes: "Hermes", name: str, tool_input: dict, confirmed: bool = Fa
         return hermes.open_app(tool_input.get("name", ""), confirmed=confirmed)
     if name == "open_url":
         return hermes.open_url(tool_input.get("url", ""))
+    if name == "set_reminder":
+        return hermes.set_reminder(tool_input.get("seconds", 0), tool_input.get("message", ""))
     if name == "confirm_action":
         return hermes.confirm(tool_input.get("confirm_token", ""))
     return ActionResult(False, name, f"Hermes has no tool called {name!r}.")

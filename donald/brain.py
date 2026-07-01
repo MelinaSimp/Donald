@@ -108,11 +108,16 @@ class DonaldBrain:
         hermes: Optional[Hermes] = None,
         personality_text: Optional[str] = None,
         conversation: Optional[ConversationManager] = None,
+        kill_switch=None,
+        sense_context: bool = True,
     ) -> None:
         self.client = client
         self.hermes = hermes or Hermes()
         self.personality_text = personality_text or load_personality()
         self.conversation = conversation or ConversationManager()
+        self.kill_switch = kill_switch
+        self.sense_context = sense_context
+        self._turn_context: Optional[str] = None
 
     @property
     def _computer_on(self) -> bool:
@@ -123,6 +128,8 @@ class DonaldBrain:
         system.append({"type": "text", "text": _OPERATOR_BRIEFING})
         if self._computer_on:
             system.append({"type": "text", "text": _COMPUTER_BRIEFING})
+        if self._turn_context:
+            system.append({"type": "text", "text": self._turn_context})
         return system
 
     def _tools(self) -> list:
@@ -152,6 +159,21 @@ class DonaldBrain:
 
     def take_turn(self, user_text: str) -> TurnResult:
         """Run one full spoken turn: reason, act through Hermes, reply."""
+        # Kill switch: refuse to act or even think until resumed.
+        if self.kill_switch is not None and self.kill_switch.active:
+            reply = getattr(self.kill_switch, "paused_reply", lambda: "I'm on hold.")()
+            return TurnResult(reply=reply)
+
+        # Sense the situation once per turn (best-effort) so replies are grounded.
+        self._turn_context = None
+        if self.sense_context:
+            try:
+                from .context import format_context, gather_context
+
+                self._turn_context = format_context(gather_context())
+            except Exception:
+                self._turn_context = None
+
         self.conversation.add_user_message(user_text)
         actions: List[dict] = []
         awaiting = False

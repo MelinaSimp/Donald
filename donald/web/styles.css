@@ -101,6 +101,11 @@ button {
 button:hover { border-color: var(--gold); }
 button.primary { background: var(--gold); color: #1a1500; border-color: var(--gold); font-weight: 600; }
 button.live { box-shadow: 0 0 0 2px var(--gold); }
+#kill { border-color: #6b2b2b; color: #ff9b9b; }
+#kill:hover { border-color: #ff6b6b; }
+#kill.engaged { background: #7a1f1f; color: #fff; border-color: #ff6b6b; }
+#orb.paused .core { filter: grayscale(1) brightness(0.5); animation: none; }
+#orb.paused .ring { animation: none; }
 button:disabled { opacity: 0.5; cursor: default; }
 .mute { color: var(--muted); font-size: 0.9rem; display: flex; align-items: center; gap: 6px; }
 .hint { color: var(--muted); font-size: 0.82rem; margin-top: 14px; text-align: center; min-height: 1em; }

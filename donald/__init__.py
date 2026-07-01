@@ -10,13 +10,16 @@ You say "Donald", a UI wakes, you talk, and Hermes carries out what you ask.
 """
 
 from .brain import DonaldBrain, TurnResult
+from .context import format_context, gather_context
 from .conversation import ConversationManager, Message
 from .hermes import ActionResult, Hermes, detect_platform
+from .killswitch import KillSwitch
 from .personality import (
     append_voice_cue,
     build_system_prompt,
     load_personality,
 )
+from .proactive import ProactiveEngine
 
 __all__ = [
     "ConversationManager",
@@ -26,6 +29,10 @@ __all__ = [
     "Hermes",
     "ActionResult",
     "detect_platform",
+    "KillSwitch",
+    "ProactiveEngine",
+    "gather_context",
+    "format_context",
     "append_voice_cue",
     "build_system_prompt",
     "load_personality",

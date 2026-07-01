@@ -73,8 +73,9 @@ def test_tools_and_system_passed_to_api():
     brain.take_turn("hey")
     call = brain.client.calls[0]
     assert call["tools"], "Hermes tool specs must be sent to the model"
-    # Three system blocks: personality (cached), tonal checkpoint, operator briefing.
-    assert len(call["system"]) == 3
+    # System blocks: personality (cached), tonal checkpoint, operator briefing,
+    # and — when context sensing succeeds — an ambient-context block.
+    assert len(call["system"]) >= 3
     assert any("Hermes" in b["text"] for b in call["system"])
 
 

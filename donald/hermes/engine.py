@@ -85,10 +85,21 @@ class Hermes:
     platform: str = field(default_factory=detect_platform)
     # Computer-use (see/click/type any app) is powerful and opt-in — off here.
     enable_computer_use: bool = False
+    # Optional runtime kill switch (has an ``.active`` property); when active,
+    # every action refuses.
+    kill_switch: object = None
+    # Optional callback (delay_s, message) to schedule a proactive reminder.
+    reminder_sink: object = None
     # Pending confirmations: token -> the thunk that runs the approved command.
     _pending: dict = field(default_factory=dict, repr=False)
     _counter: int = field(default=0, repr=False)
     _computer: object = field(default=None, repr=False)
+
+    def _halted(self, action: str) -> Optional["ActionResult"]:
+        """Return a refusal result if the kill switch is active, else None."""
+        if self.kill_switch is not None and self.kill_switch.active:
+            return ActionResult(False, action, "On hold — say \"resume\" to let me act again.")
+        return None
 
     # -- shell -------------------------------------------------------------
     def run_shell(self, command: str, confirmed: bool = False) -> ActionResult:
@@ -98,6 +109,9 @@ class Hermes:
         confirmed, ``needs_confirmation`` is set and a ``confirm_token`` is
         issued; call :meth:`confirm` with that token to actually run it.
         """
+        halted = self._halted("run_shell")
+        if halted:
+            return halted
         command = (command or "").strip()
         if not command:
             return ActionResult(False, "run_shell", "Nothing to run — empty command.")
@@ -172,6 +186,9 @@ class Hermes:
 
     def open_url(self, url: str) -> ActionResult:
         """Open a URL in the default browser (no shell, no gate needed)."""
+        halted = self._halted("open_url")
+        if halted:
+            return halted
         url = (url or "").strip()
         if not url:
             return ActionResult(False, "open_url", "Give me a URL.")
@@ -197,7 +214,28 @@ class Hermes:
 
     def computer_action(self, action: str, **params):
         """Execute one computer-use action; returns a ``ComputerResult``."""
+        if self.kill_switch is not None and self.kill_switch.active:
+            from .computer import ComputerResult
+
+            return ComputerResult(False, "On hold — say \"resume\" to let me act again.")
         return self.computer.execute(action, **params)
+
+    # -- reminders (proactivity) ------------------------------------------
+    def set_reminder(self, seconds: float, message: str) -> ActionResult:
+        """Ask the proactive engine to remind the user later, out loud."""
+        try:
+            seconds = float(seconds)
+        except (TypeError, ValueError):
+            return ActionResult(False, "set_reminder", "I need how many seconds from now.")
+        message = (message or "").strip()
+        if not message:
+            return ActionResult(False, "set_reminder", "Remind you about what?")
+        if self.reminder_sink is None:
+            return ActionResult(False, "set_reminder", "Reminders aren't wired up in this mode.")
+        self.reminder_sink(seconds, message)
+        mins = seconds / 60
+        when = f"{mins:.0f} min" if mins >= 1 else f"{seconds:.0f} sec"
+        return ActionResult(True, "set_reminder", f"Done. I'll remind you in {when}. I never forget.")
 
     # -- confirmation handshake -------------------------------------------
     def _stash(self, thunk: Callable[[], ActionResult]) -> str:

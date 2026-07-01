@@ -66,6 +66,7 @@ Donald's brain as tools, plus a confirmation handshake:
 - `run_shell(command)` — run a shell command. **Gated.**
 - `open_app(name)` — launch a desktop app (OS-aware: `open -a` / `start` / `gtk-launch`).
 - `open_url(url)` — open a URL in the default browser.
+- `set_reminder(seconds, message)` — Donald brings it up out loud later, unprompted.
 - `confirm_action(token)` — run a previously gated command the user just approved.
 - `computer` — **(opt-in)** see the screen and click/type/scroll any app. See below.
 
@@ -110,6 +111,29 @@ the beta endpoint and feeds the screenshots back to the model as images.
 > computer-use. Shell is faster and precise; computer-use is the fallback for
 > arbitrary GUI. Wiring the master-plan MCP skills (Gmail, Drive, …) as Hermes
 > tools is the next expansion — same voice → brain → gated-action path.
+
+## Toward Jarvis: senses, proactivity, a stop word
+
+Three things move Donald from a voice command line toward something that feels
+like Jarvis — it understands your situation, it speaks first, and it stops on a
+word.
+
+- **Ambient context (`donald/context.py`).** Each turn, Donald senses your
+  situation — time, machine, the foreground app — and the brain injects it as a
+  system block. So he can react to what you're *doing*, not only what you say.
+  Collection is best-effort and OS-aware; a failed probe just omits that field.
+- **Proactivity (`donald/proactive.py`).** A background loop delivers due
+  messages through the app's outbound queue, which the UI polls
+  (`GET /api/events`) and speaks — Donald talking *first*. The seed watcher is
+  reminders: "Donald, remind me in ten minutes to call Luca," and ten minutes
+  later he brings it up on his own. New triggers (calendar, a failing build, a
+  file change) plug into the same `schedule → deliver` path.
+- **Kill switch (`donald/killswitch.py`).** Before an always-on mic that can
+  click anything, you need a hard stop. Say **"stop"** (caught in the browser,
+  so it never waits on the model) or hit the Stop button: every Hermes action
+  refuses, each turn short-circuits to "I'm on hold," and proactive messages are
+  held (not lost). Say **"resume"** to come back. It also honors the repo's
+  env-var switch (`security.killswitch`) as the ops/incident lever.
 
 ## Safety & trust model
 

@@ -25,6 +25,10 @@ You ──"Donald, …"──▶  browser UI  ──speech-to-text──▶  DON
   hard-blocked, risky ones make Donald *ask you out loud* before running.
   Opt-in **computer-use** (`./run.sh --computer`) lets Hermes also see the
   screen and click/type any app that has no command line.
+- **Jarvis touches** — Donald senses your context (time, foreground app) each
+  turn, can **speak first** (say "remind me in 10 minutes to…" and he brings it
+  up on his own), and stops dead on **"stop"** (a hard kill switch) until you
+  say "resume".
 - **Voice + UI** live in the browser (`donald/web/`): wake-word detection,
   speech-to-text, and Donald's spoken voice all use the Web Speech API — no
   native audio dependencies, works on macOS / Windows / Linux.

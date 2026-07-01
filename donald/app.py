@@ -44,14 +44,28 @@ _CONTENT_TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/
 
 
 class _DonaldServer(ThreadingHTTPServer):
-    """Holds the one shared brain so every request reuses the conversation."""
+    """Holds the shared brain, kill switch, and proactive message queue."""
 
     daemon_threads = True
 
-    def __init__(self, addr, handler, brain: DonaldBrain):
+    def __init__(self, addr, handler, brain: DonaldBrain, kill_switch, proactive):
         super().__init__(addr, handler)
         self.brain = brain
         self.brain_lock = threading.Lock()
+        self.kill_switch = kill_switch
+        self.proactive = proactive
+        self._events: list = []          # spoken lines Donald pushes on his own
+        self._events_lock = threading.Lock()
+
+    def push_event(self, line: str) -> None:
+        """Queue a proactive spoken line for the UI to pick up and say."""
+        with self._events_lock:
+            self._events.append(line)
+
+    def drain_events(self) -> list:
+        with self._events_lock:
+            out, self._events = self._events, []
+        return out
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -82,14 +96,20 @@ class _Handler(BaseHTTPRequestHandler):
                     "ok": True,
                     "platform": detect_platform(),
                     "has_api_key": bool(os.environ.get("ANTHROPIC_API_KEY")),
+                    "paused": self.server.kill_switch.active,
                 },
             )
+        if self.path == "/api/events":
+            # The UI polls this; returns any proactive lines Donald wants to say.
+            return self._send_json(200, {"say": self.server.drain_events()})
         safe = self.path.lstrip("/")
         if safe in {"app.js", "styles.css"}:
             return self._serve_file(safe)
         self._send_json(404, {"error": "not found"})
 
     def do_POST(self) -> None:
+        if self.path == "/api/killswitch":
+            return self._handle_killswitch()
         if self.path != "/api/turn":
             return self._send_json(404, {"error": "not found"})
         try:
@@ -123,6 +143,18 @@ class _Handler(BaseHTTPRequestHandler):
             },
         )
 
+    def _handle_killswitch(self) -> None:
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            action = json.loads(self.rfile.read(length) or b"{}").get("action", "")
+        except (ValueError, json.JSONDecodeError):
+            return self._send_json(400, {"error": "bad request"})
+        if action == "engage":
+            self.server.kill_switch.engage()
+        elif action == "release":
+            self.server.kill_switch.release()
+        return self._send_json(200, {"paused": self.server.kill_switch.active})
+
     def _serve_file(self, name: str) -> None:
         path = WEB_DIR / name
         if not path.is_file():
@@ -131,13 +163,29 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(200, path.read_bytes(), ctype)
 
 
-def build_brain(dry_run: bool = False, computer_use: bool = False) -> DonaldBrain:
-    """Construct the brain, wiring a real Anthropic client when a key exists."""
+def build_assembly(dry_run: bool = False, computer_use: bool = False):
+    """Wire the brain, kill switch, and proactive engine together.
+
+    Returns ``(brain, kill_switch, proactive)``. ``proactive``'s sink is set by
+    :func:`serve` once the server (which owns the outbound queue) exists.
+    """
     from anthropic import Anthropic
 
-    client = Anthropic()
-    hermes = Hermes(dry_run=dry_run, enable_computer_use=computer_use)
-    return DonaldBrain(client=client, hermes=hermes)
+    from .killswitch import KillSwitch
+    from .proactive import ProactiveEngine
+
+    kill_switch = KillSwitch()
+    # Sink is rebound to the server's queue in serve(); no-op until then.
+    proactive = ProactiveEngine(sink=lambda line: None, kill_switch=kill_switch)
+
+    hermes = Hermes(
+        dry_run=dry_run,
+        enable_computer_use=computer_use,
+        kill_switch=kill_switch,
+        reminder_sink=proactive.add_reminder,
+    )
+    brain = DonaldBrain(client=Anthropic(), hermes=hermes, kill_switch=kill_switch)
+    return brain, kill_switch, proactive
 
 
 def serve(
@@ -151,8 +199,11 @@ def serve(
         raise SystemExit(
             "Set ANTHROPIC_API_KEY so Donald can think. (export ANTHROPIC_API_KEY=sk-...)"
         )
-    brain = build_brain(dry_run=dry_run, computer_use=computer_use)
-    httpd = _DonaldServer((HOST, port), _Handler, brain)
+    brain, kill_switch, proactive = build_assembly(dry_run=dry_run, computer_use=computer_use)
+    httpd = _DonaldServer((HOST, port), _Handler, brain, kill_switch, proactive)
+    # Now that the server (and its queue) exist, point proactive output at it.
+    proactive.set_sink(httpd.push_event)
+    proactive.start()
     url = f"http://{HOST}:{port}/"
     print(f"Donald is live at {url}  (Ctrl-C to shut it down)")
     print('Open it, allow the microphone, and say "Donald".')
