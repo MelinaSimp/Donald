@@ -6,5 +6,8 @@ pytest>=8.0.0
 pyyaml>=6.0
 # Prism optional live integrations (install as needed):
 # google-genai>=0.3   # Tier 5 images (needs GEMINI_API_KEY + billing)
-# fastapi>=0.110      # serve mockups
-# uvicorn>=0.29
+
+# Donald gateway (connects Donald -> Hermes + voice; see gateway/README.md):
+httpx>=0.27       # Hermes (OpenAI-compatible) + ElevenLabs HTTP clients
+fastapi>=0.110    # the REST + WebSocket server your UI talks to
+uvicorn>=0.29     # ASGI server that runs the gateway
