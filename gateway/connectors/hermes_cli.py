@@ -41,7 +41,7 @@ class HermesCliConnector:
         cli_path: str = "/opt/hermes/.venv/bin/hermes",
         extra_args: Optional[List[str]] = None,
         model: Optional[str] = None,
-        timeout_s: float = 300.0,
+        timeout_s: float = 600.0,
         docker_bin: str = "docker",
         runner: Optional[Runner] = None,
     ) -> None:

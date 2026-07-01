@@ -110,7 +110,7 @@ def load_settings() -> Settings:
         hermes_api_key=os.environ.get("HERMES_API_KEY"),
         hermes_model=os.environ.get("HERMES_MODEL", "hermes"),
         # Local models can be slow (cold-load + tool loops); default generous.
-        hermes_timeout_s=float(os.environ.get("HERMES_TIMEOUT_S", "300")),
+        hermes_timeout_s=float(os.environ.get("HERMES_TIMEOUT_S", "600")),
         hermes_docker_container=os.environ.get("HERMES_DOCKER_CONTAINER") or None,
         hermes_cli_path=os.environ.get(
             "HERMES_CLI_PATH", "/opt/hermes/.venv/bin/hermes"
