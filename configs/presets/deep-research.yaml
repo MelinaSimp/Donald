@@ -1,0 +1,235 @@
+# Preset: Deep Research Orchestration
+# Execution: On-demand (user-triggered) or scheduled (recurring digest)
+# Purpose: Multi-source, adversarially-verified research with citations and synthesis
+
+preset_id: deep-research
+name: Deep Research
+description: |
+  Multi-phase research harness: decompose question → fan-out parallel sub-agents →
+  fetch primary sources → adversarial verification → synthesize → cite and archive.
+  Produces 5–30 page cited dossiers in minutes to hours, depending on depth.
+version: "1.0"
+
+# Execution modes
+execution_modes:
+  - mode: on_demand
+    trigger: user_message
+    example_prompt: "Research SpaceX's Starlink business model and competitive position"
+
+  - mode: scheduled
+    trigger: cron
+    frequency: weekly
+    at_day: monday
+    at_time: "09:00"
+    example_use: "Weekly digest of tracked companies"
+
+# Configurable depth levels
+depth_levels:
+  quick:
+    duration_seconds: 120
+    cost_estimate_usd: 0.15
+    phases: [decompose, fan_out, fetch, synthesize]
+    description: "1–2 page quick brief with highlights and one source per claim"
+
+  standard:
+    duration_seconds: 300
+    cost_estimate_usd: 0.50
+    phases: [decompose, fan_out, fetch, verify, synthesize]
+    description: "5–10 page briefing with balanced evidence and counterarguments"
+
+  deep:
+    duration_seconds: 3600
+    cost_estimate_usd: 1.20
+    phases: [decompose, fan_out, fetch, verify, adversarial_verify, synthesize, appendix]
+    description: "20–30 page dossier with deep data tables, appendices, and multi-source validation"
+
+# Multi-phase orchestration (fan-out parallel where possible)
+phases:
+  decompose:
+    name: Question Decomposition
+    description: Break user query into 5–8 sub-questions covering different angles
+    cost_usd: 0.05
+    latency_seconds: 20
+    model: claude-opus-4-8
+    skills:
+      - Research/decompose_query
+    output: list of (angle, sub_question, search_keywords)
+
+  fan_out:
+    name: Parallel Research (6–8 agents, 2–3 queries each)
+    description: Launch independent sub-agents, each owning one angle (news, financials, competitive, risks, etc.)
+    cost_usd: 0.40
+    latency_seconds: 120
+    model: claude-sonnet-5
+    parallelism: 8
+    skills:
+      - WebSearch/targeted_search
+      - WebFetch/read_primary_sources
+      - News_API/headlines_and_articles
+      - SEC_EDGAR/10K_10Q_8K (via Composio)
+    output: per-angle summaries with sources
+
+  fetch:
+    name: Deep Source Reading
+    description: |
+      Pull full documents, not snippets. For tradeable assets: SEC filings, earnings transcripts,
+      investor decks. For private: fundraising rounds, contract wins, key person moves.
+    cost_usd: 0.15
+    latency_seconds: 180
+    model: claude-opus-4-8
+    parallelism: 4
+    skills:
+      - WebFetch/read_long_form
+      - PDF/extract_tables_and_figures
+      - YouTube/transcript_fetch (for earnings calls)
+    only_in_depth: [standard, deep]
+    output: full-text excerpts with page citations
+
+  verify:
+    name: Single-Pass Verification
+    description: |
+      Fact-check each claim: does it have ≥2 independent sources?
+      Single-source claims are flagged; contradictions are surfaced.
+    cost_usd: 0.20
+    latency_seconds: 60
+    model: claude-sonnet-5
+    skills:
+      - Research/cross_reference_claims
+      - WebSearch/targeted_contradictory_search
+    only_in_depth: [standard, deep]
+    output: verified claims vs. flagged/uncertain
+
+  adversarial_verify:
+    name: Adversarial Verification (3-agent debate)
+    description: |
+      Three independent agents try to *refute* key findings. If ≥2 succeed,
+      the claim is marked uncertain. This kills plausible-but-wrong conclusions.
+    cost_usd: 0.30
+    latency_seconds: 90
+    model: claude-sonnet-5
+    parallelism: 3
+    skills:
+      - Research/argue_against_claim
+      - WebSearch/find_counterexample
+    only_in_depth: [deep]
+    output: refutation attempts; verdict on each claim
+
+  synthesize:
+    name: Synthesis & Drafting
+    description: |
+      Produce the final briefing: executive summary → thesis → evidence →
+      counter-thesis/risks → data tables → sources. Every non-obvious claim is cited.
+    cost_usd: 0.10
+    latency_seconds: 60
+    model: claude-opus-4-8
+    skills:
+      - Research/draft_structured_report
+      - Markdown/format_with_tables
+    output: markdown briefing
+
+  appendix:
+    name: Appendices & Data Tables (optional, deep only)
+    description: |
+      Extract and format financials, org charts, timeline of events, full bibliography.
+    cost_usd: 0.15
+    latency_seconds: 60
+    model: claude-sonnet-5
+    only_in_depth: [deep]
+    output: markdown appendices
+
+# Output formats
+output:
+  formats:
+    - markdown
+    - pdf (via Google Drive)
+    - canva_deck (via Canva, branded)
+    - html (for web embedding)
+
+  delivery:
+    - type: google_drive
+      folder: "/Donald/Research Archive"
+      structure: "{year}/{month}/{slug}.md"
+      retain_years: 2
+
+    - type: memory_vector_store
+      index_by: question, entities, date
+      allow_recall: true
+
+    - type: slack (optional)
+      if_enabled: notify_on_completion
+
+    - type: email
+      if_enabled: send_digest_summary_only
+
+# Guardrails & cost management
+guardrails:
+  read_only: true
+  max_cost_per_research_usd:
+    quick: 0.20
+    standard: 0.75
+    deep: 1.50
+  max_duration_seconds:
+    quick: 180
+    standard: 600
+    deep: 7200
+  # Halt if >10 contradictions and ≤50% verification pass rate
+  halt_on_uncertain_quality: true
+
+# Integrations required
+integrations_required:
+  - WebSearch
+  - WebFetch
+  - Google_Drive
+
+integrations_optional:
+  - SEC_EDGAR (via Composio, for financials)
+  - News_API (via Composio, for headlines)
+  - YouTube (via Composio, for transcripts)
+  - Canva (for deck output)
+  - Slack (for notifications)
+
+# Memory & recall
+memory:
+  store_report: true
+  embed_for_semantic_search: true
+  tags_auto_extracted:
+    - entities (companies, people, products)
+    - date_range
+    - confidence_level
+    - contradictions_found
+  query_examples:
+    - "What did we conclude about SpaceX in March?"
+    - "Show me all research on AI infrastructure capex"
+    - "Find contradictory findings across our reports"
+
+# Success metrics
+metrics:
+  - research_duration_seconds
+  - cost_per_research_usd
+  - citation_count
+  - unique_sources
+  - claims_verified_percent
+  - contradictions_flagged
+  - adversarial_refutation_success_rate
+
+# Example invocations
+examples:
+  - |
+    Prompt: "Deep research on Tesla's FSD vs. Waymo: who's ahead?"
+    Depth: deep
+    Output: 25-page dossier with financials, technical comparison, regulatory risk
+    Cost: ~$1.20
+    Duration: ~45 min
+
+  - |
+    Prompt: "Quick brief: what changed in AI compute since last month?"
+    Depth: quick
+    Output: 2-page summary with 5 key findings
+    Cost: ~$0.15
+    Duration: ~2 min
+
+  - |
+    Prompt: "Weekly digest of tracked companies: Databricks, Scale AI, Anthropic"
+    Execution: scheduled (Mondays 9am)
+    Output: 3 × 5-page briefs, one document per company
+    Cost: ~$1.50/week

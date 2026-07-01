@@ -1,0 +1,130 @@
+# Preset: Morning Operations Briefing
+# Execution: Scheduled (daily, weekday mornings)
+# Purpose: Start your day with a holistic briefing — inbox, calendar, market health, research digest
+
+preset_id: morning-ops
+name: Morning Operations
+description: Daily 7am briefing with email summary, calendar conflicts, market pre-open, and key research updates
+version: "1.0"
+
+# Execution schedule
+scheduler:
+  enabled: true
+  frequency: daily
+  at_time: "07:00"
+  weekdays_only: true
+  timezone: America/New_York
+
+# Core orchestration stages (run in sequence)
+stages:
+  - id: email-triage
+    name: Email Triage
+    description: Summarize inbox, flag urgent, draft replies to VIPs
+    cost_estimate_usd: 0.05
+    latency_p99_seconds: 30
+    skills:
+      - Gmail/read_inbox
+      - Gmail/summarize_threads
+    model: claude-opus-4-8
+    requires_approval: false
+    fallback_model: claude-sonnet-5
+
+  - id: calendar-scan
+    name: Calendar Conflicts & Prep
+    description: Check today's schedule, flag conflicts, summarize key meetings
+    cost_estimate_usd: 0.02
+    latency_p99_seconds: 15
+    skills:
+      - Google_Calendar/list_events
+      - Planning/extract_prep_items
+    model: claude-haiku-4-5
+    requires_approval: false
+
+  - id: market-open
+    name: Market Pre-Open Brief
+    description: Fetch overnight news, check your positions, flag >2% moves
+    cost_estimate_usd: 0.08
+    latency_p99_seconds: 45
+    skills:
+      - Market_Data/fetch_overnight_gaps
+      - Research/headlines_by_ticker
+      - Trading/portfolio_status
+    model: claude-opus-4-8
+    requires_approval: false
+    only_if_trading_enabled: true
+
+  - id: research-digest
+    name: Research Digest
+    description: Summarize new research, updated theses, and tracked companies
+    cost_estimate_usd: 0.06
+    latency_p99_seconds: 40
+    skills:
+      - Research/check_tracked_items
+      - WebSearch/news_by_company
+    model: claude-sonnet-5
+    requires_approval: false
+
+# Output format
+output:
+  format: structured
+  channels:
+    - type: text
+      target: stdout
+      summary_bullets: true
+    - type: voice
+      target: twilio_sms
+      if_vip_only: false
+    - type: document
+      target: google_drive
+      folder: "/Donald/Daily Briefings"
+      retain_days: 30
+
+# Guardrails & limits
+guardrails:
+  # Don't escalate to approval for routine reads
+  read_only: true
+  cost_daily_limit_usd: 0.50
+  # Voice volume: don't interrupt before 8am or after 10pm
+  quiet_hours:
+    start: "22:00"
+    end: "08:00"
+
+# Integration requirements
+integrations_required:
+  - Gmail
+  - Google_Calendar
+  - Twilio
+  - Google_Drive
+
+integrations_optional:
+  - Market_Data (if trading enabled)
+  - Research (if deep-research preset enabled)
+
+# Success metrics (what to track)
+metrics:
+  - execution_time_seconds
+  - email_summary_length
+  - critical_items_flagged
+  - cost_per_run_usd
+
+# Example output structure
+example_output: |
+  📧 **Email (12 new, 3 marked urgent)**
+  - 2 VIP flagged → reply drafts ready
+  - 1 approval request for Q3 budget
+  - Bulk subscriptions (archived)
+
+  📅 **Today's Calendar (5 meetings)**
+  - 9am: Board call (1hr) — prep: review Q2 metrics
+  - 1pm: Sales standup (30min) — 🚨 Overlaps with customer call! Reschedule?
+  - 3pm: 1-on-1 with team lead
+
+  📈 **Market Snapshot**
+  - Your portfolio: +1.2% overnight (biggest: NVDA +2.8% on earnings)
+  - Watch: TSLA -3.4% (news: Cybertruck recall initiated)
+  - No alerts under risk limits
+
+  🔬 **Research Updates (3 new)**
+  - Updated: SpaceX valuation analysis (new funding round reported)
+  - Tracked: Tesla competition analysis (GM EV sales data released)
+  - Deep dive: Ready on-demand "AI infrastructure capex trends"
