@@ -10,7 +10,21 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from . import consequential, memory_tools, notes, reminders, web
+from . import (
+    canva,
+    computer_control,
+    consequential,
+    gmail,
+    google_calendar,
+    google_drive,
+    higgsfield,
+    memory_tools,
+    motion_video,
+    notes,
+    reminders,
+    stripe_payments,
+    web,
+)
 from .base import Registry
 from .notes import Notes
 from .reminders import Reminders
@@ -47,4 +61,15 @@ def build_registry(ctx: ToolContext) -> Registry:
     memory_tools.register(registry, ctx)
     # Tier 6 — the gated "never without asking" tools (+ safe draft_message).
     consequential.register(registry, ctx)
+    # Tier 6+ — Phase 1: High-impact MCP servers (Gmail, Calendar, Drive).
+    gmail.register(registry, ctx)
+    google_calendar.register(registry, ctx)
+    google_drive.register(registry, ctx)
+    # Tier 6+ — Phase 2: Computer control (screenshots, click, type, navigate).
+    computer_control.register(registry, ctx)
+    # Tier 6+ — Phase 3: Specialized MCP servers (Canva, AI generation, video, payments).
+    canva.register(registry, ctx)
+    higgsfield.register(registry, ctx)
+    motion_video.register(registry, ctx)
+    stripe_payments.register(registry, ctx)
     return registry
