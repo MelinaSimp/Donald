@@ -17,17 +17,6 @@ const STATES = {
   speaking: { label: "SPEAKING", energy: 1.0, ringSpeed: 1.6, particles: 350, sparkRate: 0.14 },
 };
 
-const PHRASES = [
-  "Systems are fully operational, sir.",
-  "I've already anticipated that request.",
-  "Running analysis now. Standby.",
-  "All parameters within expected range.",
-  "I'm here whenever you need me.",
-  "Initiating protocol. Results incoming.",
-  "Perimeter is secure. No anomalies.",
-  "Consider it done.",
-];
-
 function lerp(a: number, b: number, t: number) { return a + (b - a) * t; }
 function rand(min: number, max: number) { return min + Math.random() * (max - min); }
 
@@ -49,6 +38,13 @@ export default function DonaldOrb() {
   const [displayedPhrase, setDisplayedPhrase] = useState("");
   const [booted, setBooted] = useState(false);
   const [bootProgress, setBootProgress] = useState(0);
+
+  // Chat wiring
+  const sessionIdRef = useRef("web-" + Math.random().toString(36).slice(2));
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
 
   // Boot
   useEffect(() => {
@@ -81,17 +77,46 @@ export default function DonaldOrb() {
     sparkRateRef.current.target = (STATES as any)[s].sparkRate;
   }, []);
 
-  const handleInteract = useCallback(() => {
-    if (stateRef.current !== "idle") return;
-    transitionTo("listening");
-    setTimeout(() => {
-      transitionTo("thinking");
-      setTimeout(() => {
-        transitionTo("speaking");
-        setPhraseText(PHRASES[Math.floor(Math.random() * PHRASES.length)]);
-        setTimeout(() => { transitionTo("idle"); setTimeout(() => setPhraseText(""), 1500); }, 3500);
-      }, 1500);
-    }, 2000);
+  // Send a message to the Donald gateway (proxied via Next at /gw), show the
+  // reply, and play the ElevenLabs voice if the gateway returned one.
+  const send = useCallback(async (message: string) => {
+    const msg = message.trim();
+    if (!msg || stateRef.current === "thinking" || stateRef.current === "speaking") return;
+    setInput("");
+    setSending(true);
+    setPhraseText("");
+    transitionTo("thinking");
+    try {
+      const res = await fetch("/gw/api/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session_id: sessionIdRef.current, message: msg }),
+      });
+      const data = await res.json();
+      const text: string = (data && data.text) || "…";
+      const voiceEv = (data.events || []).find(
+        (e: any) => e.type === "voice" && e.audio_b64
+      );
+      transitionTo("speaking");
+      setPhraseText(text);
+      if (voiceEv) {
+        const audio = new Audio(`data:${voiceEv.mime || "audio/mpeg"};base64,${voiceEv.audio_b64}`);
+        audioRef.current = audio;
+        audio.onended = () => transitionTo("idle");
+        audio.onerror = () => transitionTo("idle");
+        audio.play().catch(() => transitionTo("idle"));
+      } else {
+        // No voice: hold "speaking" long enough to read, scaled to length.
+        const dur = Math.min(15000, 2500 + text.length * 45);
+        setTimeout(() => { if (stateRef.current === "speaking") transitionTo("idle"); }, dur);
+      }
+    } catch {
+      transitionTo("speaking");
+      setPhraseText("Gateway's not answering, Champ — is it running on :8765?");
+      setTimeout(() => transitionTo("idle"), 4000);
+    } finally {
+      setSending(false);
+    }
   }, [transitionTo]);
 
   // Canvas — must re-run after boot; canvas isn't mounted during the boot screen
@@ -326,7 +351,7 @@ export default function DonaldOrb() {
 
   return (
     <div
-      onClick={booted ? handleInteract : undefined}
+      onClick={booted ? () => inputRef.current?.focus() : undefined}
       style={{
         width: "100%", height: "100vh", background: BG, position: "relative", overflow: "hidden",
         fontFamily: "'SF Mono','Cascadia Code','Fira Code','JetBrains Mono',monospace",
@@ -408,15 +433,31 @@ export default function DonaldOrb() {
             </div>
           </div>
 
-          {state==="idle" && !phraseText && (
-            <div style={{
-              position:"absolute",bottom:"9%",left:0,right:0,textAlign:"center",
-              fontSize:10,letterSpacing:3,color:DIM_TEXT,
-              animation:"subtlePulse 3s infinite",zIndex:2,
-            }}>
-              TAP TO INTERACT
-            </div>
-          )}
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position:"absolute",bottom:"7%",left:0,right:0,
+              display:"flex",justifyContent:"center",zIndex:3,
+            }}
+          >
+            <input
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") send(input); }}
+              placeholder={sending ? "Donald is working…" : "Talk to Donald — hit Enter"}
+              disabled={sending}
+              style={{
+                width:"min(520px,80%)",padding:"12px 18px",
+                background:"rgba(212,160,32,0.06)",
+                border:`1px solid rgba(212,160,32,0.35)`,borderRadius:12,
+                color:"#ffe9b0",fontSize:14,outline:"none",
+                fontFamily:"inherit",letterSpacing:0.5,
+                boxShadow:"0 0 24px rgba(212,160,32,0.08)",
+                opacity: sending ? 0.6 : 1,
+              }}
+            />
+          </div>
 
           {[
             {top:16,left:16,borderTop:`1px solid ${GOLD}18`,borderLeft:`1px solid ${GOLD}18`},

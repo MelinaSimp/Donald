@@ -26,6 +26,17 @@ npm run build
 npm start
 ```
 
+## Connecting to the Donald gateway
+
+The orb is wired to the gateway: type in the box and hit Enter → it POSTs to
+`/gw/api/chat`, shows Donald's reply, and plays the ElevenLabs voice if the
+gateway returned one. `next.config.js` proxies `/gw/*` to the gateway
+(`GATEWAY_URL`, default `http://127.0.0.1:8765`) **server-side**, so the gateway
+stays bound to localhost — no CORS, nothing public.
+
+Run the gateway first (see `gateway/README.md`), then `npm run dev`. If the app
+and gateway run on different hosts, set `GATEWAY_URL` before starting.
+
 ## Features
 
 - **Golden Amber Orb**: Responsive canvas-based animation with dynamic particle effects
