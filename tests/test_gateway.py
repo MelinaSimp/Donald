@@ -471,6 +471,28 @@ def test_openai_brain_translates_tool_history_to_openai_roles():
     assert msgs[3]["tool_call_id"] == "t1" and msgs[3]["content"] == "done"
 
 
+def test_openai_brain_strips_reasoning_think_tags():
+    # MiniMax-M2 style: chain-of-thought in <think>…</think> before the answer.
+    http = FakeHTTP(
+        post_resp=FakeResp(
+            json_data={
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {
+                            "content": "<think>be cocky, one sentence</think>\n\nI'm Donald, the best. Believe me.",
+                        },
+                    }
+                ]
+            }
+        )
+    )
+    brain = OpenAICompatBrain(api_key="k", client=http)
+    resp = run(brain.messages.create(model="MiniMax-M2", system="S", messages=[{"role": "user", "content": "who?"}]))
+    assert resp.content[0].type == "text"
+    assert resp.content[0].text == "I'm Donald, the best. Believe me."  # no <think> leakage
+
+
 def test_openai_brain_http_error_raises():
     from gateway.connectors.openai_brain import BrainError
 
