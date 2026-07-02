@@ -1,12 +1,54 @@
-# Donald
+# D.O.N.A.L.D.
 
-A Jarvis-style AI assistant you talk to in your terminal. Powered by Claude
-(`claude-opus-4-8`).
+**Distributed Open Network Agent with Localized Determination**
+
+A personal Jarvis-style AI assistant you talk to in your terminal. Powered by Claude (`claude-opus-4-8`) and built on the OpenClaw framework (V2026.6.11).
 
 Donald is an **agent**: he holds a conversation, and when it helps, he reaches
 for tools — reading, writing, and editing files, running shell commands, and
 searching the web — then reports back. He **remembers** durable facts about you
 between sessions, and can optionally **speak** his replies.
+
+---
+
+## 🔐 Security Defaults
+
+DONALD is built with **defense in depth**. Every tool is bounded, every operation is auditable, and approval gates protect your system.
+
+### Inbound Access Control
+
+By default, DONALD runs locally with approval gates on all mutations:
+
+```bash
+donald                            # Local terminal only
+# File operations require approval
+# Shell execution requires approval unless allowlisted
+```
+
+### Approval Matrix
+
+| Operation | Default | Notes |
+|-----------|---------|-------|
+| Read files | Auto | Sandboxed to working directory |
+| Write files | **Asks first** | Shows exact content before writing |
+| Edit files | **Asks first** | Surgical replacements, shows diff |
+| Shell exec | **Asks first**¹ | Unless in `shell_auto_approve` list |
+| Web search | Auto | Rate-limited |
+| Memory ops | Auto | Your own notes |
+
+¹ Configure safe commands in `config.json` to skip approval.
+
+### Configuration & Allowlisting
+
+Enable auto-approval for specific commands in `~/.donald/config.json`:
+
+```json
+{
+  "shell_auto_approve": ["git status", "git log", "ls", "cat", "pwd"]
+}
+```
+
+---
 
 ## Setup
 
