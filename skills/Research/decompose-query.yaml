@@ -1,0 +1,163 @@
+---
+spec_version: "1.0"
+id: Research/decompose-query
+name: "Decompose Research Query"
+category: research
+description: >-
+  Break a high-level research question into 5–8 sub-questions,
+  each targeting a different angle (news, financials, competitive, risks, etc.)
+  Used as the first stage of deep-research preset.
+
+provider: Donald Core
+integration_required: null
+cost_estimate:
+  tokens_per_call: 1200
+  usd_per_call: 0.08
+  cache_friendly: false
+
+when_to_use: |
+  Use this skill to:
+  - Start a deep-research preset (always first stage)
+  - Break down complex topics into manageable angles
+  - Generate search keywords for sub-agents
+
+  DON'T use this for:
+  - Simple factual lookups (use WebSearch/search)
+  - Real-time data (use Market_Data/fetch)
+
+inputs:
+  query:
+    type: string
+    minLength: 10
+    maxLength: 500
+    description: "The research question to decompose"
+    example: "What's really going on with Tesla's FSD development?"
+    required: true
+
+  depth_level:
+    type: string
+    enum: [quick, standard, deep]
+    default: standard
+    description: "Complexity level (affects number of sub-questions)"
+    required: false
+
+  domain:
+    type: string
+    enum: [company, technology, market, person, other]
+    description: "Domain hint (helps tailor sub-questions)"
+    required: false
+
+outputs:
+  type: object
+  properties:
+    original_query:
+      type: string
+    sub_questions:
+      type: array
+      minItems: 5
+      maxItems: 8
+      items:
+        type: object
+        properties:
+          angle:
+            type: string
+            description: "Category (news, financials, competitive, risks, technicals, etc.)"
+          sub_question:
+            type: string
+            description: "Specific question to research this angle"
+          search_keywords:
+            type: array
+            items: string
+            description: "Keywords to search for this sub-question"
+          priority:
+            type: string
+            enum: [high, medium, low]
+            description: "Which angles matter most"
+    reasoning:
+      type: string
+      description: "Why these sub-questions were chosen"
+    estimated_duration_seconds:
+      type: integer
+      description: "Estimated time to research all angles"
+
+quality:
+  availability: "99.9%"
+  latency_p99_seconds: 10
+  accuracy_notes: |
+    - Produces well-balanced angles; biased toward comprehensive coverage
+    - Sub-questions are specific and searchable
+    - Sometimes over-decomposes simple queries (5 angles when 3 would suffice)
+
+related_skills:
+  - Research/synthesize-findings
+  - Research/adversarial-verify
+  - WebSearch/search
+
+used_in:
+  - deep-research/decompose
+
+examples:
+  - name: "Decompose Tesla FSD question"
+    inputs:
+      query: "What's really going on with Tesla's FSD development?"
+      depth_level: deep
+      domain: company
+    output_snippet: |
+      {
+        "sub_questions": [
+          {
+            "angle": "News & Announcements",
+            "sub_question": "What major updates has Tesla announced about FSD in the last 6 months?",
+            "search_keywords": ["Tesla FSD update", "Full Self Driving", "Elon Musk FSD announcement"],
+            "priority": "high"
+          },
+          {
+            "angle": "Technical Progress",
+            "sub_question": "What evidence exists for Tesla's actual FSD capability (disengages, edge cases handled)?",
+            "search_keywords": ["Tesla FSD data", "self driving disengages", "autopilot incidents"],
+            "priority": "high"
+          },
+          {
+            "angle": "Competitive Landscape",
+            "sub_question": "How does Tesla's FSD compare to Waymo, Aurora, Cruise in capability and timeline?",
+            "search_keywords": ["Waymo vs Tesla", "autonomous vehicle comparison", "FSD vs other"],
+            "priority": "high"
+          },
+          {
+            "angle": "Regulatory & Risk",
+            "sub_question": "What regulatory hurdles or safety concerns exist for FSD deployment?",
+            "search_keywords": ["Tesla FSD regulation", "autonomous vehicle safety", "NHTSA FSD"],
+            "priority": "medium"
+          },
+          {
+            "angle": "Financials & Timeline",
+            "sub_question": "When does Tesla expect FSD to be a material business driver? What's priced in?",
+            "search_keywords": ["Tesla FSD revenue", "autonomy impact valuation"],
+            "priority": "medium"
+          },
+          {
+            "angle": "Expert Commentary",
+            "sub_question": "What do industry experts (researchers, competitors, analysts) say about Tesla's progress?",
+            "search_keywords": ["FSD analysis", "autonomous vehicle experts Tesla"],
+            "priority": "medium"
+          }
+        ],
+        "reasoning": "Tesla's FSD is complex. We decomposed into 6 angles covering current status, competition, risk, and valuation impact.",
+        "estimated_duration_seconds": 900
+      }
+
+version: "1.0"
+deprecated: false
+maintained_by: "Anthropic Claude"
+license: "Apache-2.0"
+
+tags:
+  - research
+  - decomposition
+  - multi-hop
+  - deep-research
+
+metadata:
+  execution_mode: "synchronous"
+  parallelizable: false
+  stateful: false

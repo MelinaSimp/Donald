@@ -1,0 +1,169 @@
+---
+registry_version: "1.0"
+last_updated: "2025-07-01T00:00:00Z"
+total_skills: 62
+
+description: |
+  Donald Skills Registry — Declarative, discoverable, composable capabilities.
+  All skills are versioned YAML specs with input/output contracts, cost estimates, and examples.
+  Skills are used by presets (orchestrations) to accomplish multi-stage workflows.
+
+categories:
+  communications:
+    count: 8
+    description: "Email, SMS, chat, messaging"
+    examples:
+      - Gmail/read-inbox
+      - Gmail/read-message
+      - Gmail/send-message
+      - Twilio/send-sms
+      - Twilio/send-voice
+
+  web:
+    count: 12
+    description: "Search, fetch, parse, web scraping"
+    examples:
+      - WebSearch/search
+      - WebSearch/search-news
+      - WebFetch/read
+      - WebFetch/parse-html
+
+  trading:
+    count: 15
+    description: "Orders, backtesting, risk management, portfolio tracking"
+    examples:
+      - Trading/backtest-signal
+      - Trading/place-order
+      - Trading/check-risk-limits
+      - Trading/kelly-fraction
+      - Alpaca/get-positions
+
+  research:
+    count: 10
+    description: "Decomposition, synthesis, verification, citations"
+    examples:
+      - Research/decompose-query
+      - Research/adversarial-verify
+      - Research/synthesize-findings
+      - Research/cross-reference-claims
+
+  content:
+    count: 9
+    description: "Image, video, audio, document generation"
+    examples:
+      - Canva/create-design
+      - Higgsfield/generate-image
+      - Motion/create-video
+      - Google_Drive/create-doc
+
+  database:
+    count: 8
+    description: "Memory, state, vector search, audit log"
+    examples:
+      - Memory/store-fact
+      - Memory/recall
+      - Database/upsert-position
+
+featured:
+  - Gmail/read-inbox              # most-used in morning-ops
+  - WebSearch/search              # essential for research
+  - Research/decompose-query      # first stage of deep-research
+  - Trading/backtest-signal       # first stage of trading-monitor
+  - Research/synthesize-findings  # critical for quality
+
+integrations:
+  Gmail:
+    status: connected
+    skills: 8
+    scopes:
+      - gmail.readonly
+      - gmail.modify
+    note: "Requires OAuth setup via 'donald mcp connect gmail'"
+
+  GoogleDrive:
+    status: connected
+    skills: 6
+    scopes:
+      - drive
+    note: "Requires OAuth setup via 'donald mcp connect drive'"
+
+  WebSearch:
+    status: connected
+    skills: 12
+    scopes: []
+    note: "Built-in; no setup needed"
+
+  Twilio:
+    status: connected
+    skills: 4
+    scopes: []
+    note: "Requires TWILIO_* env vars in .env"
+
+  Alpaca:
+    status: not_connected
+    skills: 12
+    message: "Run: donald mcp connect alpaca"
+    note: "Free paper trading; live requires approval + funding"
+
+  Canva:
+    status: connected
+    skills: 5
+    note: "Requires OAuth setup via 'donald mcp connect canva'"
+
+  Higgsfield:
+    status: connected
+    skills: 6
+    note: "Requires API key (AI media generation service)"
+
+  Composio:
+    status: not_connected
+    skills: 8
+    message: "Run: donald mcp connect composio"
+    note: "Connects 100+ services (Notion, Slack, Stripe, etc.)"
+
+cost_summary:
+  daily_estimate: "$0.50"
+  monthly_estimate: "$15-50"
+  breakdown:
+    morning_ops: "$5-7/mo"
+    deep_research: "$3-8/mo"
+    trading_monitor: "$50-150/mo (highly variable)"
+  notes: |
+    Costs vary by preset frequency and model selection.
+    Optimize by: (1) using Haiku for reads/filters, (2) caching results, (3) running async.
+
+usage_stats:
+  last_7_days:
+    total_calls: 1247
+    unique_skills: 23
+    avg_cost_per_call: "$0.032"
+    most_used:
+      - Gmail/read-inbox: 456 calls ($4.56)
+      - WebSearch/search: 312 calls ($6.24)
+      - Research/decompose: 87 calls ($6.96)
+  errors:
+    - skill_id: Gmail/read-inbox
+      error_count: 3
+      error_rate_pct: 0.66
+      note: "Timeout on large (100+ email) inboxes"
+
+roadmap:
+  next:
+    - Skill versioning & semver
+    - Marketplace integration (install from Hermes, OpenClaw)
+    - Skill performance leaderboard
+  future:
+    - Community skill contributions
+    - Skill composition (chain outputs → inputs)
+    - ML-based skill recommendations
+
+notes: |
+  This registry is the source of truth for what skills are available.
+  Donald's PresetExecutor loads skills from here and validates inputs/outputs.
+  Skills can be added (skills/*/new-skill.yaml) and automatically registered.
+
+  To add a new skill:
+    1. Create skills/<Category>/<skill-name>.yaml (use examples as template)
+    2. Run: donald skills register skills/<Category>/<skill-name>.yaml
+    3. Test: donald skills show <Category>/<skill-name>
+    4. Use in preset: add to preset stages

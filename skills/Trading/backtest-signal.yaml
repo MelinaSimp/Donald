@@ -1,0 +1,250 @@
+---
+spec_version: "1.0"
+id: Trading/backtest-signal
+name: "Backtest Trading Signal"
+category: trading
+description: >-
+  Replay a trading signal on historical data (5y by default).
+  Returns: win rate, Sharpe ratio, max drawdown, slippage impact, edge confidence score.
+  Required before any live or paper trade execution (per policy).
+
+provider: Trading (Alpaca integration)
+integration_required: alpaca
+cost_estimate:
+  tokens_per_call: 2000
+  usd_per_call: 0.15
+  cache_friendly: true  # same symbol/strategy can reuse results
+
+when_to_use: |
+  Use this skill to:
+  - Validate a trading signal BEFORE execution (mandatory)
+  - Measure edge confidence on a strategy
+  - Understand slippage impact
+  - Tune position sizing (Kelly fraction)
+
+  DON'T use this for:
+  - Real-time price monitoring (use Market_Data/fetch-quote)
+  - Order placement (use Trading/place-order)
+  - Risk checking (use Trading/check-risk-limits)
+
+inputs:
+  symbol:
+    type: string
+    pattern: "^[A-Z]{1,5}$"
+    description: "Ticker symbol (e.g., AAPL, BTC/USD)"
+    example: "NVDA"
+    required: true
+
+  side:
+    type: string
+    enum: [BUY, SELL]
+    description: "Direction of the trade"
+    required: true
+
+  entry_signal:
+    type: string
+    description: "What triggered this trade (e.g., 'earnings_beat', 'momentum_breakout')"
+    example: "earnings_beat"
+    required: false
+
+  exit_signal:
+    type: string
+    description: "Exit condition (e.g., '10% profit', '5% loss', '5 day hold')"
+    example: "5_day_hold"
+    required: false
+
+  lookback_days:
+    type: integer
+    minimum: 252
+    maximum: 3652
+    default: 1260
+    description: "Historical period to backtest on (default 5 years)"
+    required: false
+
+  use_same_model:
+    type: boolean
+    default: true
+    description: "If true, use your past rules consistently; if false, brute-force best rules"
+    required: false
+
+outputs:
+  type: object
+  properties:
+    symbol:
+      type: string
+    side:
+      type: string
+    backtest_period:
+      type: object
+      properties:
+        start_date:
+          type: string
+          format: iso8601
+        end_date:
+          type: string
+          format: iso8601
+        trading_days:
+          type: integer
+
+    results:
+      type: object
+      properties:
+        total_trades:
+          type: integer
+          description: "How many times this signal would have fired"
+
+        wins:
+          type: integer
+
+        losses:
+          type: integer
+
+        win_rate_pct:
+          type: number
+          description: "% of trades that were profitable"
+
+        avg_win_pct:
+          type: number
+          description: "Average profit on winning trades"
+
+        avg_loss_pct:
+          type: number
+          description: "Average loss on losing trades"
+
+        sharpe_ratio:
+          type: number
+          description: "Risk-adjusted returns (higher is better; >1.0 is good)"
+
+        sortino_ratio:
+          type: number
+          description: "Like Sharpe but only penalizes downside volatility"
+
+        max_drawdown_pct:
+          type: number
+          description: "Worst peak-to-trough loss during period"
+
+        cumulative_return_pct:
+          type: number
+          description: "Total % return if you'd done every signal"
+
+        vs_buyhold_pct:
+          type: number
+          description: "Cumulative return vs. buy-and-hold of same symbol"
+
+    edge_confidence:
+      type: object
+      properties:
+        score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: "Confidence that this signal has edge (0-100 scale)"
+
+        reasoning:
+          type: string
+          description: "Why we scored it this way"
+
+        halt_conditions:
+          type: array
+          items: string
+          description: "Warnings that suggest NOT trading this signal"
+          example: ["Sharpe < 0.3", "< 20 historical trades", "Max DD > -25%"]
+
+    slippage_analysis:
+      type: object
+      properties:
+        estimated_slippage_pct:
+          type: number
+          description: "Expected slippage on entry/exit (bid-ask, market impact)"
+
+        impact_on_returns:
+          type: number
+          description: "How much slippage reduces Sharpe (before-after)"
+
+    recommendations:
+      type: array
+      items: string
+      description: "Suggestions for this signal (e.g., position sizing, time windows)"
+
+    error:
+      type: string
+      description: "Error if backtest failed (e.g., insufficient data)"
+
+quality:
+  availability: "98%"
+  latency_p99_seconds: 30
+  accuracy_notes: |
+    - Assumes perfect execution (no slippage in backtest, only estimated)
+    - Past performance ≠ future results
+    - Does not account for regime changes or black swans
+    - Survivorship bias: only tested symbols that exist today
+
+related_skills:
+  - Trading/place-order
+  - Trading/check-risk-limits
+  - Trading/kelly-fraction
+  - Market_Data/fetch-bars
+
+used_in:
+  - trading-monitor/backtest
+  - trading-monitor/strategy-validate
+
+examples:
+  - name: "Backtest NVDA earnings momentum signal"
+    inputs:
+      symbol: "NVDA"
+      side: "BUY"
+      entry_signal: "earnings_beat"
+      exit_signal: "5_day_hold"
+      lookback_days: 1260
+    output_snippet: |
+      {
+        "backtest_period": {
+          "start_date": "2020-07-01",
+          "end_date": "2025-07-01",
+          "trading_days": 1260
+        },
+        "results": {
+          "total_trades": 12,
+          "wins": 7,
+          "losses": 5,
+          "win_rate_pct": 58.3,
+          "avg_win_pct": 4.2,
+          "avg_loss_pct": -2.1,
+          "sharpe_ratio": 0.78,
+          "max_drawdown_pct": -12.3,
+          "cumulative_return_pct": 31.5,
+          "vs_buyhold_pct": 8.2
+        },
+        "edge_confidence": {
+          "score": 68,
+          "reasoning": "Above-average win rate (58% > 50%), positive Sharpe (0.78), but max DD is material. Suitable for supervised live.",
+          "halt_conditions": []
+        },
+        "slippage_analysis": {
+          "estimated_slippage_pct": -0.3,
+          "impact_on_returns": -2.1
+        },
+        "recommendations": [
+          "Position size: 1-2% of portfolio (Kelly suggests 0.6%, using 0.15× fractional Kelly)",
+          "Best time window: 9:30-11:00am ET (captures post-earnings volatility)",
+          "Avoid earnings season week ± (too noisy)"
+        ]
+      }
+
+version: "1.0"
+deprecated: false
+maintained_by: "Anthropic Claude"
+license: "Apache-2.0"
+
+tags:
+  - trading
+  - backtest
+  - signal-validation
+  - risk-management
+
+metadata:
+  execution_mode: "synchronous"
+  parallelizable: true  # can backtest multiple signals in parallel
+  stateful: false
+  critical_skill: true  # MUST succeed before trading

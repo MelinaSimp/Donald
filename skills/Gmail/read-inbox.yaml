@@ -1,0 +1,179 @@
+---
+spec_version: "1.0"
+id: Gmail/read-inbox
+name: "Read Inbox"
+category: communications
+description: >-
+  Fetch and list emails from Gmail inbox with optional filtering.
+  Returns: list of {id, from, subject, preview, date, labels, has_attachment}
+
+provider: Gmail
+integration_required: gmail
+cost_estimate:
+  tokens_per_call: 500
+  usd_per_call: 0.01
+  cache_friendly: true
+
+when_to_use: |
+  Use this skill to:
+  - Fetch new/unread emails for triage
+  - Check emails from specific senders
+  - Filter by labels (inbox, urgent, etc.)
+
+  DON'T use this for:
+  - Reading full email bodies (use Gmail/read-message)
+  - Sending emails (use Gmail/send-message)
+  - Advanced search (use Gmail/search)
+
+inputs:
+  max_results:
+    type: integer
+    minimum: 1
+    maximum: 100
+    default: 20
+    description: "Max emails to return"
+    required: false
+
+  from_filter:
+    type: string
+    description: "Filter by sender email address"
+    example: "boss@company.com"
+    required: false
+
+  label_filter:
+    type: string
+    enum: [INBOX, SENT, DRAFT, SPAM, TRASH]
+    description: "Gmail label to filter by"
+    required: false
+
+  unread_only:
+    type: boolean
+    default: false
+    description: "Return only unread emails"
+    required: false
+
+outputs:
+  type: object
+  properties:
+    emails:
+      type: array
+      items:
+        type: object
+        properties:
+          id:
+            type: string
+            description: "Gmail message ID (use with Gmail/read-message)"
+          from:
+            type: string
+            description: "Sender email address"
+          subject:
+            type: string
+          preview:
+            type: string
+            description: "First 200 chars of email body"
+          date:
+            type: string
+            format: iso8601
+          labels:
+            type: array
+            items: string
+          has_attachment:
+            type: boolean
+    total_count:
+      type: integer
+      description: "Total count of emails in folder (before filtering)"
+    error:
+      type: string
+      description: "Error message if request failed"
+
+quality:
+  availability: "99.5%"
+  latency_p99_seconds: 5
+  accuracy_notes: |
+    - Respects Gmail filters and labels
+    - Preview text is truncated; use Gmail/read-message for full body
+    - Date range queries not supported
+
+fallbacks:
+  - id: Gmail/read-inbox-cached
+    description: "Same output, but uses cached results (up to 5 min stale)"
+    cost_reduction: "0.3×"
+
+related_skills:
+  - Gmail/read-message
+  - Gmail/send-message
+  - Gmail/search
+  - Gmail/archive-message
+  - Gmail/add-label
+
+used_in:
+  - morning-ops/email-triage
+  - outreach/email-validation
+
+examples:
+  - name: "Get 10 most recent emails"
+    inputs:
+      max_results: 10
+    output_snippet: |
+      {
+        "emails": [
+          {
+            "id": "msg_123abc",
+            "from": "alice@company.com",
+            "subject": "Q3 budget review",
+            "preview": "Hi, can you review the attached budget spreadsheet for Q3...",
+            "date": "2025-07-01T14:30:00Z",
+            "labels": ["INBOX"],
+            "has_attachment": true
+          },
+          {
+            "id": "msg_456def",
+            "from": "bob@company.com",
+            "subject": "Meeting notes",
+            "preview": "Here are the notes from today's standup. Action items: 1) Alice...",
+            "date": "2025-07-01T10:15:00Z",
+            "labels": ["INBOX", "WORK"],
+            "has_attachment": false
+          }
+        ],
+        "total_count": 47
+      }
+
+  - name: "Get unread emails from boss"
+    inputs:
+      from_filter: "boss@company.com"
+      unread_only: true
+    output_snippet: |
+      {
+        "emails": [
+          {
+            "id": "msg_789ghi",
+            "from": "boss@company.com",
+            "subject": "Urgent: Q4 planning",
+            "preview": "We need to finalize Q4 goals by end of week. Please send...",
+            "date": "2025-07-01T16:45:00Z",
+            "labels": ["INBOX"],
+            "has_attachment": false
+          }
+        ],
+        "total_count": 3
+      }
+
+version: "1.0"
+deprecated: false
+maintained_by: "Anthropic Claude"
+license: "Apache-2.0"
+
+tags:
+  - email
+  - gmail
+  - read-only
+  - communications
+  - inbox-triage
+
+metadata:
+  required_scopes: ["gmail.readonly"]
+  execution_mode: "synchronous"
+  parallelizable: false
+  stateful: false
+  rate_limit: "60 calls/min"
