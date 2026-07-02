@@ -23,8 +23,27 @@ The HTTP client is injectable so tests never hit the network.
 from __future__ import annotations
 
 import json
+import re
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
+
+# Reasoning models (MiniMax-M2, etc.) wrap their chain-of-thought in <think>…
+# </think>. That's private scratch-work, not the answer — strip it before it
+# reaches the user.
+_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
+def _strip_reasoning(text: str) -> str:
+    if not text:
+        return text
+    cleaned = _THINK_BLOCK.sub("", text)
+    # A dangling close tag (opening lost/streamed away): keep only what follows.
+    if "</think>" in cleaned:
+        cleaned = cleaned.rsplit("</think>", 1)[-1]
+    # A dangling open tag (reasoning truncated, no answer yet): drop from it on.
+    if "<think>" in cleaned:
+        cleaned = cleaned.split("<think>", 1)[0]
+    return cleaned.strip()
 
 
 class OpenAICompatBrain:
@@ -217,6 +236,7 @@ def _from_openai_response(data: Dict[str, Any]) -> SimpleNamespace:
     text = message.get("content")
     if isinstance(text, list):  # some providers return content as parts
         text = _result_content_to_text(text)
+    text = _strip_reasoning(text) if text else text
     if text:
         blocks.append(SimpleNamespace(type="text", text=text))
 
