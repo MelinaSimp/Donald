@@ -34,7 +34,7 @@ ElevenLabs turns Donald's reply into speech.
 
 | Piece | What it is | How the gateway reaches it |
 |-------|------------|----------------------------|
-| **Donald brain** | The cocky Claude personality in `donald/` | Anthropic API (`ANTHROPIC_API_KEY`) |
+| **Donald brain** | The cocky personality in `donald/` | `DONALD_PROVIDER=anthropic` → Claude (`ANTHROPIC_API_KEY`); or `DONALD_PROVIDER=openai` → any OpenAI-compatible API (MiniMax/groq/vLLM) via `DONALD_BASE_URL` + `DONALD_API_KEY` + `DONALD_MODEL` |
 | **Hermes** | The local NousResearch agent on your computer | Its OpenAI-compatible API server at `http://127.0.0.1:8642` (`/v1/chat/completions`, `Authorization: Bearer <API_SERVER_KEY>`) |
 | **Voice** | ElevenLabs text-to-speech | `https://api.elevenlabs.io` (`ELEVENLABS_API_KEY` + a `ELEVENLABS_VOICE_ID`) |
 

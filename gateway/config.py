@@ -40,8 +40,14 @@ def _env_list(name: str, default: List[str]) -> List[str]:
 class Settings:
     """Resolved gateway configuration."""
 
-    # --- Donald brain (Anthropic) ---
+    # --- Donald brain ---
+    # provider="anthropic": Claude via the Anthropic API.
+    # provider="openai":     any OpenAI-compatible chat API (MiniMax, groq,
+    #                        vLLM, …) at donald_base_url with donald_api_key.
+    donald_provider: str
+    donald_base_url: str
     anthropic_api_key: Optional[str]
+    donald_api_key: Optional[str]
     donald_model: str
     donald_max_tokens: int
     donald_temperature: float
@@ -81,8 +87,11 @@ class Settings:
     def redacted(self) -> dict:
         """A safe-to-log view: presence of secrets, never their values."""
         return {
+            "donald_provider": self.donald_provider,
             "donald_model": self.donald_model,
+            "donald_base_url": self.donald_base_url if self.donald_provider == "openai" else None,
             "anthropic_api_key": bool(self.anthropic_api_key),
+            "donald_api_key": bool(self.donald_api_key),
             "hermes_mode": self.hermes_mode,
             "hermes_base_url": self.hermes_base_url,
             "hermes_api_key": bool(self.hermes_api_key),
@@ -100,7 +109,12 @@ class Settings:
 def load_settings() -> Settings:
     """Build ``Settings`` from the current process environment."""
     return Settings(
+        donald_provider=os.environ.get("DONALD_PROVIDER", "anthropic").strip().lower(),
+        # Default OpenAI-compatible endpoint = MiniMax's official platform.
+        donald_base_url=os.environ.get("DONALD_BASE_URL", "https://api.minimax.io/v1"),
         anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY"),
+        # Generic key for the openai-compatible provider (falls back to OPENAI_API_KEY).
+        donald_api_key=os.environ.get("DONALD_API_KEY") or os.environ.get("OPENAI_API_KEY"),
         donald_model=os.environ.get("DONALD_MODEL", "claude-opus-4-8"),
         donald_max_tokens=_env_int("DONALD_MAX_TOKENS", 1024),
         donald_temperature=float(os.environ.get("DONALD_TEMPERATURE", "0.8")),

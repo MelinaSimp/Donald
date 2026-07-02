@@ -35,14 +35,22 @@ log = logging.getLogger("donald.gateway")
 
 def build_orchestrator(settings: Settings) -> DonaldOrchestrator:
     """Wire the real connectors and the Anthropic brain from settings."""
-    try:
-        from anthropic import AsyncAnthropic
-    except ImportError as exc:  # pragma: no cover - dependency guard
-        raise RuntimeError(
-            "anthropic is required to run the gateway (pip install anthropic)"
-        ) from exc
+    if settings.donald_provider == "openai":
+        from .connectors.openai_brain import OpenAICompatBrain
 
-    llm = AsyncAnthropic(api_key=settings.anthropic_api_key)
+        llm = OpenAICompatBrain(
+            base_url=settings.donald_base_url,
+            api_key=settings.donald_api_key,
+        )
+    else:
+        try:
+            from anthropic import AsyncAnthropic
+        except ImportError as exc:  # pragma: no cover - dependency guard
+            raise RuntimeError(
+                "anthropic is required to run the gateway (pip install anthropic)"
+            ) from exc
+
+        llm = AsyncAnthropic(api_key=settings.anthropic_api_key)
     if settings.hermes_mode == "cli":
         from .connectors.hermes_cli import HermesCliConnector
 
@@ -113,10 +121,16 @@ def create_app(
             if settings.hermes_mode == "cli"
             else settings.hermes_base_url
         )
+        brain_configured = bool(
+            settings.donald_api_key
+            if settings.donald_provider == "openai"
+            else settings.anthropic_api_key
+        )
         return {
             "status": "ok",
+            "donald_provider": settings.donald_provider,
             "donald_model": settings.donald_model,
-            "anthropic_configured": bool(settings.anthropic_api_key),
+            "brain_configured": brain_configured,
             "hermes_mode": settings.hermes_mode,
             "hermes_target": hermes_target,
             "hermes_reachable": hermes_ok,

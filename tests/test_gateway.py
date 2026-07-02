@@ -10,8 +10,9 @@ from gateway.config import load_settings
 from gateway.connectors.base import ConnectorResult
 from gateway.connectors.hermes import HermesConnector
 from gateway.connectors.hermes_cli import HermesCliConnector
+from gateway.connectors.openai_brain import OpenAICompatBrain
 from gateway.connectors.voice import ElevenLabsVoice, VoiceResult
-from gateway.orchestrator import DonaldOrchestrator, Session
+from gateway.orchestrator import HERMES_TOOL, DonaldOrchestrator, Session
 
 
 def run(coro):
@@ -383,6 +384,103 @@ def test_orchestrator_emits_voice_when_configured():
     voice_events = [e for e in reply.events if e["type"] == "voice"]
     assert voice_events and voice_events[0]["audio_b64"]
     assert voice.calls == ["Listen to this voice. Tremendous."]
+
+
+# --------------------------------------------------------------------------
+# OpenAI-compatible brain (e.g. MiniMax)
+# --------------------------------------------------------------------------
+def test_openai_brain_translates_request_and_response():
+    # Response mimics an OpenAI chat.completions payload with a tool call.
+    http = FakeHTTP(
+        post_resp=FakeResp(
+            json_data={
+                "choices": [
+                    {
+                        "finish_reason": "tool_calls",
+                        "message": {
+                            "content": "Let me get Hermes on it.",
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "hermes_execute",
+                                        "arguments": '{"task": "ls ~", "reason": "fs"}',
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        )
+    )
+    brain = OpenAICompatBrain(api_key="k", client=http)
+    resp = run(
+        brain.messages.create(
+            model="MiniMax-M2",
+            system=[{"type": "text", "text": "PERSONA"}, {"type": "text", "text": "CHECK"}],
+            messages=[{"role": "user", "content": "what's in home?"}],
+            tools=[HERMES_TOOL],
+            max_tokens=512,
+            temperature=0.7,
+        )
+    )
+    # Response translated back to Anthropic-shaped blocks + stop_reason.
+    assert resp.stop_reason == "tool_use"
+    assert resp.content[0].type == "text"
+    tool_block_ = resp.content[1]
+    assert tool_block_.type == "tool_use" and tool_block_.name == "hermes_execute"
+    assert tool_block_.input == {"task": "ls ~", "reason": "fs"}
+
+    # Request was translated to OpenAI shape: merged system, function tool.
+    sent = http.posts[0]["json"]
+    assert sent["messages"][0]["role"] == "system"
+    assert "PERSONA" in sent["messages"][0]["content"] and "CHECK" in sent["messages"][0]["content"]
+    assert sent["tools"][0]["type"] == "function"
+    assert sent["tools"][0]["function"]["name"] == "hermes_execute"
+    assert http.posts[0]["headers"]["Authorization"] == "Bearer k"
+
+
+def test_openai_brain_translates_tool_history_to_openai_roles():
+    # Anthropic-shaped history with an assistant tool_use + a user tool_result.
+    history = [
+        {"role": "user", "content": "do it"},
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": "delegating"},
+                {"type": "tool_use", "id": "t1", "name": "hermes_execute", "input": {"task": "x"}},
+            ],
+        },
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "done"}]},
+    ]
+    http = FakeHTTP(
+        post_resp=FakeResp(json_data={"choices": [{"finish_reason": "stop", "message": {"content": "ok"}}]})
+    )
+    brain = OpenAICompatBrain(api_key="k", client=http)
+    resp = run(brain.messages.create(model="m", system="S", messages=history, tools=[HERMES_TOOL]))
+    assert resp.stop_reason == "end_turn"
+    assert resp.content[0].type == "text" and resp.content[0].text == "ok"
+
+    msgs = http.posts[0]["json"]["messages"]
+    roles = [m["role"] for m in msgs]
+    assert roles == ["system", "user", "assistant", "tool"]
+    # The assistant message carries a tool_calls entry; the tool message echoes the id.
+    assert msgs[2]["tool_calls"][0]["function"]["name"] == "hermes_execute"
+    assert msgs[3]["tool_call_id"] == "t1" and msgs[3]["content"] == "done"
+
+
+def test_openai_brain_http_error_raises():
+    from gateway.connectors.openai_brain import BrainError
+
+    http = FakeHTTP(post_resp=FakeResp(status_code=401, text="bad key"))
+    brain = OpenAICompatBrain(api_key="nope", client=http)
+    try:
+        run(brain.messages.create(model="m", system="S", messages=[{"role": "user", "content": "hi"}]))
+        assert False, "expected BrainError"
+    except BrainError as exc:
+        assert "401" in str(exc)
 
 
 # --------------------------------------------------------------------------
