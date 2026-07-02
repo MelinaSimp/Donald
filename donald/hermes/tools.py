@@ -85,6 +85,21 @@ TOOL_SPECS = [
         },
     },
     {
+        "name": "remember",
+        "description": (
+            "Store a durable fact about the user so you know it in future sessions "
+            "(e.g. 'prefers dark mode', 'co-founder is Luca', 'ships on Fridays'). "
+            "Use when they tell you something worth keeping, or say 'remember that…'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "fact": {"type": "string", "description": "The fact to remember, one sentence."}
+            },
+            "required": ["fact"],
+        },
+    },
+    {
         "name": "confirm_action",
         "description": (
             "Run a previously gated, risky action that the user has now approved "
@@ -122,6 +137,8 @@ def dispatch(hermes: "Hermes", name: str, tool_input: dict, confirmed: bool = Fa
         return hermes.open_url(tool_input.get("url", ""))
     if name == "set_reminder":
         return hermes.set_reminder(tool_input.get("seconds", 0), tool_input.get("message", ""))
+    if name == "remember":
+        return hermes.remember(tool_input.get("fact", ""))
     if name == "confirm_action":
         return hermes.confirm(tool_input.get("confirm_token", ""))
     return ActionResult(False, name, f"Hermes has no tool called {name!r}.")

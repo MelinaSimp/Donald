@@ -90,6 +90,8 @@ class Hermes:
     kill_switch: object = None
     # Optional callback (delay_s, message) to schedule a proactive reminder.
     reminder_sink: object = None
+    # Optional memory store (see donald.memory.Memory) for durable facts.
+    memory: object = None
     # Pending confirmations: token -> the thunk that runs the approved command.
     _pending: dict = field(default_factory=dict, repr=False)
     _counter: int = field(default=0, repr=False)
@@ -236,6 +238,21 @@ class Hermes:
         mins = seconds / 60
         when = f"{mins:.0f} min" if mins >= 1 else f"{seconds:.0f} sec"
         return ActionResult(True, "set_reminder", f"Done. I'll remind you in {when}. I never forget.")
+
+    # -- memory -----------------------------------------------------------
+    def remember(self, fact: str) -> ActionResult:
+        """Store a durable fact about the user so it survives restarts."""
+        fact = (fact or "").strip()
+        if not fact:
+            return ActionResult(False, "remember", "Remember what, exactly?")
+        if self.memory is None:
+            return ActionResult(False, "remember", "Memory isn't wired up in this mode.")
+        added = self.memory.remember(fact)
+        return ActionResult(
+            True,
+            "remember",
+            "Locked in. I never forget." if added else "Already knew that, Champ.",
+        )
 
     # -- confirmation handshake -------------------------------------------
     def _stash(self, thunk: Callable[[], ActionResult]) -> str:

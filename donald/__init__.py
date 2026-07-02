@@ -14,6 +14,7 @@ from .context import format_context, gather_context
 from .conversation import ConversationManager, Message
 from .hermes import ActionResult, Hermes, detect_platform
 from .killswitch import KillSwitch
+from .memory import Memory
 from .personality import (
     append_voice_cue,
     build_system_prompt,
@@ -30,6 +31,7 @@ __all__ = [
     "ActionResult",
     "detect_platform",
     "KillSwitch",
+    "Memory",
     "ProactiveEngine",
     "gather_context",
     "format_context",

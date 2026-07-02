@@ -67,6 +67,7 @@ Donald's brain as tools, plus a confirmation handshake:
 - `open_app(name)` — launch a desktop app (OS-aware: `open -a` / `start` / `gtk-launch`).
 - `open_url(url)` — open a URL in the default browser.
 - `set_reminder(seconds, message)` — Donald brings it up out loud later, unprompted.
+- `remember(fact)` — store a durable fact about you (survives restarts).
 - `confirm_action(token)` — run a previously gated command the user just approved.
 - `computer` — **(opt-in)** see the screen and click/type/scroll any app. See below.
 
@@ -128,6 +129,11 @@ word.
   reminders: "Donald, remind me in ten minutes to call Luca," and ten minutes
   later he brings it up on his own. New triggers (calendar, a failing build, a
   file change) plug into the same `schedule → deliver` path.
+- **Memory (`donald/memory.py`).** A small SQLite store under `~/.donald` so
+  Donald remembers you across restarts: every turn is logged (and the recent
+  ones rehydrated into context on launch, so a restart continues the
+  conversation), and durable facts ("call me Champ", "co-founder is Luca") are
+  injected each turn via the `remember` tool. No dependencies.
 - **Kill switch (`donald/killswitch.py`).** Before an always-on mic that can
   click anything, you need a hard stop. Say **"stop"** (caught in the browser,
   so it never waits on the model) or hit the Stop button: every Hermes action

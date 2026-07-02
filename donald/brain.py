@@ -110,6 +110,7 @@ class DonaldBrain:
         conversation: Optional[ConversationManager] = None,
         kill_switch=None,
         sense_context: bool = True,
+        memory=None,
     ) -> None:
         self.client = client
         self.hermes = hermes or Hermes()
@@ -117,7 +118,34 @@ class DonaldBrain:
         self.conversation = conversation or ConversationManager()
         self.kill_switch = kill_switch
         self.sense_context = sense_context
+        self.memory = memory
         self._turn_context: Optional[str] = None
+        if self.memory is not None:
+            self._rehydrate()
+
+    def _rehydrate(self) -> None:
+        """Reload recent turns from memory so a restart continues the chat."""
+        try:
+            for role, content in self.memory.recent_turns():
+                if role == "user":
+                    self.conversation.add_user_message(content)
+                else:
+                    self.conversation.add_assistant_message(content)
+        except Exception:
+            pass
+
+    def _memory_block(self) -> Optional[str]:
+        if self.memory is None:
+            return None
+        try:
+            facts = self.memory.facts()
+        except Exception:
+            return None
+        if not facts:
+            return None
+        from .memory import format_facts
+
+        return format_facts(facts)
 
     @property
     def _computer_on(self) -> bool:
@@ -128,6 +156,9 @@ class DonaldBrain:
         system.append({"type": "text", "text": _OPERATOR_BRIEFING})
         if self._computer_on:
             system.append({"type": "text", "text": _COMPUTER_BRIEFING})
+        mem = self._memory_block()
+        if mem:
+            system.append({"type": "text", "text": mem})
         if self._turn_context:
             system.append({"type": "text", "text": self._turn_context})
         return system
@@ -175,6 +206,8 @@ class DonaldBrain:
                 self._turn_context = None
 
         self.conversation.add_user_message(user_text)
+        if self.memory is not None:
+            self.memory.save_turn("user", user_text)
         actions: List[dict] = []
         awaiting = False
 
@@ -188,7 +221,9 @@ class DonaldBrain:
             self.conversation.add_assistant_message(content)
 
             if response.stop_reason != "tool_use":
-                return TurnResult(reply=_text_of(content), actions=actions, awaiting_confirmation=awaiting)
+                return self._finish(
+                    TurnResult(reply=_text_of(content), actions=actions, awaiting_confirmation=awaiting)
+                )
 
             # Run every tool the model asked for and feed results back.
             tool_results = []
@@ -212,11 +247,19 @@ class DonaldBrain:
             self.conversation.add_user_message(tool_results)
 
         # Ran out of tool rounds without a spoken answer — close the turn cleanly.
-        return TurnResult(
-            reply="That one's got more moving parts than I expected, Champ. Let's take it one step at a time.",
-            actions=actions,
-            awaiting_confirmation=awaiting,
+        return self._finish(
+            TurnResult(
+                reply="That one's got more moving parts than I expected, Champ. Let's take it one step at a time.",
+                actions=actions,
+                awaiting_confirmation=awaiting,
+            )
         )
+
+    def _finish(self, result: TurnResult) -> TurnResult:
+        """Persist the assistant reply to memory, then return the result."""
+        if self.memory is not None and result.reply:
+            self.memory.save_turn("assistant", result.reply)
+        return result
 
     def _run_computer(self, block: dict, actions: List[dict]) -> dict:
         """Execute a computer-use action and build an (image-bearing) tool_result."""

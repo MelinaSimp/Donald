@@ -172,9 +172,11 @@ def build_assembly(dry_run: bool = False, computer_use: bool = False):
     from anthropic import Anthropic
 
     from .killswitch import KillSwitch
+    from .memory import Memory
     from .proactive import ProactiveEngine
 
     kill_switch = KillSwitch()
+    memory = Memory()
     # Sink is rebound to the server's queue in serve(); no-op until then.
     proactive = ProactiveEngine(sink=lambda line: None, kill_switch=kill_switch)
 
@@ -183,8 +185,11 @@ def build_assembly(dry_run: bool = False, computer_use: bool = False):
         enable_computer_use=computer_use,
         kill_switch=kill_switch,
         reminder_sink=proactive.add_reminder,
+        memory=memory,
     )
-    brain = DonaldBrain(client=Anthropic(), hermes=hermes, kill_switch=kill_switch)
+    brain = DonaldBrain(
+        client=Anthropic(), hermes=hermes, kill_switch=kill_switch, memory=memory
+    )
     return brain, kill_switch, proactive
 
 
