@@ -141,6 +141,26 @@ word.
   held (not lost). Say **"resume"** to come back. It also honors the repo's
   env-var switch (`security.killswitch`) as the ops/incident lever.
 
+## Hermes Command Center (dashboard)
+
+A live view of Donald's hands at `http://127.0.0.1:8765/dashboard` (linked from
+the voice UI). It polls `GET /api/dashboard` every 2s and shows:
+
+- **Status strip** — platform, approval mode, computer-use on/off, dry-run,
+  whether the brain has a key, and a big **LIVE / HALTED** pill.
+- **Stat tiles** — turns, actions run, reminders pending, facts known.
+- **Live activity** — a rolling feed of every Hermes action (✓/✕/⏸), its
+  summary, the command detail, and the utterance that triggered it.
+- **Reminders** — what's scheduled and the countdown.
+- **What Donald knows** — the durable facts in memory.
+- **Context now** — the ambient snapshot (time, machine, foreground app).
+- **Recent conversation** — the last turns from memory.
+- A **Stop/Resume** control wired to the same kill switch as the voice UI.
+
+Server side: `_DonaldServer` keeps a bounded (`maxlen=100`) action log written
+after each turn (`record_turn`), plus counters; `ProactiveEngine.snapshot()`
+gives the reminder countdown. All of it is assembled in `_dashboard_state()`.
+
 ## Safety & trust model
 
 - **Transcripts are data, not commands from a third party.** The operator

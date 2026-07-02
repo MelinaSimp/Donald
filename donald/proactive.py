@@ -95,6 +95,15 @@ class ProactiveEngine:
         with self._lock:
             return len(self._reminders)
 
+    def snapshot(self, now: float) -> List[dict]:
+        """Pending reminders as ``[{message, in_seconds}]``, soonest first."""
+        with self._lock:
+            items = sorted(self._reminders, key=lambda r: r.due_at)
+            return [
+                {"message": r.message, "in_seconds": max(0.0, round(r.due_at - now, 1))}
+                for r in items
+            ]
+
     # -- background loop --------------------------------------------------
     def _run(self) -> None:
         while not self._stop.wait(self._interval):

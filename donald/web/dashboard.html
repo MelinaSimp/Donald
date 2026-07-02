@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hermes · Command Center</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="dash">
+  <header class="dash-header">
+    <div class="brand">
+      <span class="logo">▲</span>
+      <div>
+        <h1>HERMES</h1>
+        <p>Command Center · Donald's hands</p>
+      </div>
+    </div>
+    <div class="header-right">
+      <span id="pill-paused" class="pill">—</span>
+      <button id="kill" class="kill">■ Stop</button>
+      <a class="voice-link" href="/">🎙 Talk to Donald</a>
+    </div>
+  </header>
+
+  <!-- status strip -->
+  <section id="statusbar" class="statusbar"></section>
+
+  <!-- stat tiles -->
+  <section class="tiles">
+    <div class="tile"><span id="stat-turns">0</span><label>Turns</label></div>
+    <div class="tile"><span id="stat-actions">0</span><label>Actions</label></div>
+    <div class="tile"><span id="stat-reminders">0</span><label>Reminders</label></div>
+    <div class="tile"><span id="stat-facts">0</span><label>Facts known</label></div>
+  </section>
+
+  <div class="panels">
+    <section class="panel wide">
+      <h2>Live activity <span class="hint" id="feed-hint"></span></h2>
+      <div id="feed" class="feed"><p class="empty">No actions yet. Tell Donald to do something.</p></div>
+    </section>
+
+    <section class="panel">
+      <h2>Reminders</h2>
+      <div id="reminders"><p class="empty">Nothing scheduled.</p></div>
+    </section>
+
+    <section class="panel">
+      <h2>What Donald knows</h2>
+      <ul id="facts" class="facts"><li class="empty">No facts yet. Say "remember that…".</li></ul>
+    </section>
+
+    <section class="panel">
+      <h2>Context now</h2>
+      <div id="context" class="context"></div>
+    </section>
+
+    <section class="panel wide">
+      <h2>Recent conversation</h2>
+      <div id="convo" class="convo"><p class="empty">Nothing yet.</p></div>
+    </section>
+  </div>
+
+  <footer class="dash-foot"><span id="conn" class="conn">connecting…</span></footer>
+  <script src="dashboard.js"></script>
+</body>
+</html>

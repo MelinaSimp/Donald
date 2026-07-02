@@ -29,7 +29,9 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 import webbrowser
+from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -56,6 +58,10 @@ class _DonaldServer(ThreadingHTTPServer):
         self.proactive = proactive
         self._events: list = []          # spoken lines Donald pushes on his own
         self._events_lock = threading.Lock()
+        # Command-center state: a rolling log of Hermes actions + counters.
+        self.action_log: deque = deque(maxlen=100)
+        self._log_lock = threading.Lock()
+        self.turn_count = 0
 
     def push_event(self, line: str) -> None:
         """Queue a proactive spoken line for the UI to pick up and say."""
@@ -66,6 +72,20 @@ class _DonaldServer(ThreadingHTTPServer):
         with self._events_lock:
             out, self._events = self._events, []
         return out
+
+    def record_turn(self, transcript: str, result) -> None:
+        """Log a completed turn's actions for the dashboard."""
+        with self._log_lock:
+            self.turn_count += 1
+            for a in result.actions:
+                entry = dict(a)
+                entry["ts"] = time.time()
+                entry["transcript"] = transcript
+                self.action_log.append(entry)
+
+    def recent_actions(self, limit: int = 30) -> list:
+        with self._log_lock:
+            return list(self.action_log)[-limit:][::-1]  # newest first
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -89,6 +109,10 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path in ("/", "/index.html"):
             return self._serve_file("index.html")
+        if self.path in ("/dashboard", "/dashboard.html"):
+            return self._serve_file("dashboard.html")
+        if self.path == "/api/dashboard":
+            return self._send_json(200, self._dashboard_state())
         if self.path == "/api/health":
             return self._send_json(
                 200,
@@ -103,7 +127,7 @@ class _Handler(BaseHTTPRequestHandler):
             # The UI polls this; returns any proactive lines Donald wants to say.
             return self._send_json(200, {"say": self.server.drain_events()})
         safe = self.path.lstrip("/")
-        if safe in {"app.js", "styles.css"}:
+        if safe in {"app.js", "styles.css", "dashboard.js"}:
             return self._serve_file(safe)
         self._send_json(404, {"error": "not found"})
 
@@ -134,6 +158,7 @@ class _Handler(BaseHTTPRequestHandler):
                         "awaiting_confirmation": False,
                     },
                 )
+        self.server.record_turn(transcript, result)
         self._send_json(
             200,
             {
@@ -154,6 +179,47 @@ class _Handler(BaseHTTPRequestHandler):
         elif action == "release":
             self.server.kill_switch.release()
         return self._send_json(200, {"paused": self.server.kill_switch.active})
+
+    def _dashboard_state(self) -> dict:
+        """Snapshot everything the command center shows."""
+        srv = self.server
+        hermes = srv.brain.hermes
+        try:
+            from .context import gather_context
+
+            ctx = gather_context()
+        except Exception:
+            ctx = {}
+        mem = getattr(srv.brain, "memory", None)
+        memory = {"facts": [], "recent_turns": []}
+        if mem is not None:
+            try:
+                memory["facts"] = mem.facts()
+                memory["recent_turns"] = [
+                    {"role": r, "content": c} for r, c in mem.recent_turns(12)
+                ]
+            except Exception:
+                pass
+        return {
+            "status": {
+                "platform": detect_platform(),
+                "paused": srv.kill_switch.active,
+                "computer_use": bool(getattr(hermes, "enable_computer_use", False)),
+                "dry_run": bool(getattr(hermes, "dry_run", False)),
+                "approval_mode": getattr(getattr(hermes, "approval", None), "mode", "?"),
+                "has_api_key": bool(os.environ.get("ANTHROPIC_API_KEY")),
+            },
+            "context": ctx,
+            "actions": srv.recent_actions(),
+            "reminders": srv.proactive.snapshot(time.monotonic()),
+            "memory": memory,
+            "stats": {
+                "turns": srv.turn_count,
+                "actions": len(srv.action_log),
+                "reminders_pending": srv.proactive.pending,
+                "facts": len(memory["facts"]),
+            },
+        }
 
     def _serve_file(self, name: str) -> None:
         path = WEB_DIR / name

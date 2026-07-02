@@ -32,6 +32,9 @@ You ──"Donald, …"──▶  browser UI  ──speech-to-text──▶  DON
 - **Voice + UI** live in the browser (`donald/web/`): wake-word detection,
   speech-to-text, and Donald's spoken voice all use the Web Speech API — no
   native audio dependencies, works on macOS / Windows / Linux.
+- **Hermes Command Center** at `/dashboard` — a live control panel: every action
+  Hermes runs, pending reminders, what Donald remembers about you, current
+  context, and a Stop/Resume switch.
 
 ### Run it (one command)
 
