@@ -2,31 +2,35 @@
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
-# NOTE: this repo hosts several independent experiments (security/, donald/,
-# src/trillion/, prism/). A single root pyproject can only describe one package;
-# the previous root file declared [project] twice (invalid TOML), so this is
-# scoped to Prism. Other projects build/run from their own package dirs.
 [project]
-name = "prism-design-agent"
+name = "donald"
 version = "0.1.0"
-description = "Prism — a head-of-design sub-agent that composes award-quality Next.js mockups."
-requires-python = ">=3.11"
+description = "Donald — a Jarvis-style AI assistant for your terminal."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
 dependencies = [
-    "pyyaml>=6.0",
+    "anthropic>=0.40",
 ]
 
 [project.optional-dependencies]
-agent = ["anthropic>=0.40"]
-images = ["google-genai>=0.3"]
-serving = ["fastapi>=0.110", "uvicorn>=0.29"]
-dev = ["pytest>=8.0"]
+# Spoken replies (TTS) and spoken input (STT). Microphone capture also needs a
+# system PortAudio library (e.g. `brew install portaudio` / `apt install portaudio19-dev`).
+voice = [
+    "pyttsx3>=2.90",
+    "SpeechRecognition>=3.10",
+    "PyAudio>=0.2.13",
+]
+# Test and lint tooling.
+dev = [
+    "pytest>=8.0",
+]
 
 [project.scripts]
-prism = "prism.cli:main"
+donald = "donald.cli:main"
 
 [tool.setuptools]
-packages = ["prism"]
+packages = ["donald"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"

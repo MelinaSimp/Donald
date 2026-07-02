@@ -1,96 +1,102 @@
-"""Central configuration for Donald.
+"""Donald's configuration — sensible defaults, overridable without code changes.
 
-Everything Donald needs to know about its environment lives here, loaded once
-from environment variables (and a local ``.env`` if present). Each tier reads
-the fields it needs; nothing here forces you to configure tiers you aren't
-using yet.
+Settings come from three places, later ones winning:
+1. The defaults below.
+2. A JSON file at ``~/.donald/config.json`` (any subset of keys).
+3. Environment variables (``DONALD_MODEL``, ``DONALD_SHELL_TIMEOUT``, …).
+
+Everything has a safe default, so a missing or malformed config file never
+stops Donald from starting — it just falls back.
 """
 
 from __future__ import annotations
 
+import json
 import os
-from dataclasses import dataclass
-from pathlib import Path
+import pathlib
+from dataclasses import dataclass, fields, replace
 
-try:  # python-dotenv is a hard dependency, but degrade gracefully if missing.
-    from dotenv import load_dotenv
-
-    load_dotenv()
-except Exception:  # pragma: no cover - only hit if dotenv is absent
-    pass
+CONFIG_PATH = pathlib.Path.home() / ".donald" / "config.json"
 
 
-def _path(env_value: str | None, default: Path) -> Path:
-    return Path(env_value).expanduser() if env_value else default
-
-
-@dataclass
+@dataclass(frozen=True)
 class Config:
-    # ── Brain (Tier 0/1) ────────────────────────────────────────────────
-    brain: str  # "claude" or "mock"
-    model: str
-    anthropic_api_key: str | None
-
-    # ── Voice (Tier 2) ──────────────────────────────────────────────────
-    deepgram_api_key: str | None
-    elevenlabs_api_key: str | None
-    elevenlabs_voice_id: str
-
-    # ── Web search (Tier 1) ─────────────────────────────────────────────
-    brave_api_key: str | None
-
-    # ── Storage / safety ────────────────────────────────────────────────
-    db_path: Path
-    workspace: Path
-
-    # ── Proactive (Tier 4) ──────────────────────────────────────────────
-    proactive_enabled: bool
-    proactive_interval: int
-
-    @classmethod
-    def load(cls) -> "Config":
-        root = Path.cwd()
-        brain = os.getenv("DONALD_BRAIN", "claude").strip().lower()
-        anthropic_key = os.getenv("ANTHROPIC_API_KEY") or None
-        # If they asked for the real brain but have no key, fall back to mock
-        # rather than crashing — keeps Tier 0 testable out of the box.
-        if brain == "claude" and not anthropic_key:
-            brain = "mock"
-
-        return cls(
-            brain=brain,
-            model=os.getenv("DONALD_MODEL", "claude-opus-4-8"),
-            anthropic_api_key=anthropic_key,
-            deepgram_api_key=os.getenv("DEEPGRAM_API_KEY") or None,
-            elevenlabs_api_key=os.getenv("ELEVENLABS_API_KEY") or None,
-            elevenlabs_voice_id=os.getenv(
-                "ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM"
-            ),
-            brave_api_key=os.getenv("BRAVE_API_KEY") or None,
-            db_path=_path(
-                os.getenv("DONALD_DB_PATH"), root / "donald_data" / "donald.db"
-            ),
-            workspace=_path(
-                os.getenv("DONALD_WORKSPACE"), root / "donald_workspace"
-            ),
-            proactive_enabled=os.getenv("DONALD_PROACTIVE", "off").strip().lower()
-            in {"on", "1", "true", "yes"},
-            proactive_interval=int(os.getenv("DONALD_PROACTIVE_INTERVAL", "60")),
-        )
-
-    def ensure_dirs(self) -> None:
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.workspace.mkdir(parents=True, exist_ok=True)
+    model: str = "claude-opus-4-8"
+    max_tokens: int = 4096
+    shell_timeout_s: int = 60
+    max_output_chars: int = 100_000
+    # Command prefixes Donald may run WITHOUT asking. Empty by default: every
+    # shell command is approved by hand until you opt specific ones in (e.g.
+    # ["git status", "ls", "cat"]). Match is a plain prefix on the command.
+    shell_auto_approve: tuple[str, ...] = ()
+    # Start with voice output on. Off by default; needs the `voice` extra.
+    voice: bool = False
 
 
-# Personality / system prompt. Kept here so every tier shares one Donald.
-SYSTEM_PROMPT = """You are Donald, a personal AI assistant in the spirit of \
-Jarvis — capable, concise, and warm. You speak naturally, like a trusted aide, \
-not a corporate chatbot. Keep answers short unless asked to go deep.
+def _from_file() -> dict:
+    if not CONFIG_PATH.is_file():
+        return {}
+    try:
+        data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return {}  # malformed config should never block startup
+    return data if isinstance(data, dict) else {}
 
-You have tools. Use them when they help, and say plainly when you cannot do \
-something. When you take an action in the real world (files, shell, sending \
-things), be careful and confirm anything destructive or irreversible.
 
-When your reply will be spoken aloud, write the way people talk: no markdown, \
-no bullet lists, no code blocks — just clear sentences."""
+def _coerce(field_name: str, raw: str, current):
+    """Turn an env-var string into the type the field expects."""
+    if isinstance(current, bool):
+        return raw.strip().lower() in ("1", "true", "yes", "on")
+    if isinstance(current, int):
+        try:
+            return int(raw)
+        except ValueError:
+            return current
+    if isinstance(current, tuple):
+        return tuple(p.strip() for p in raw.split(",") if p.strip())
+    return raw
+
+
+_ENV_KEYS = {
+    "DONALD_MODEL": "model",
+    "DONALD_MAX_TOKENS": "max_tokens",
+    "DONALD_SHELL_TIMEOUT": "shell_timeout_s",
+    "DONALD_MAX_OUTPUT_CHARS": "max_output_chars",
+    "DONALD_SHELL_AUTO_APPROVE": "shell_auto_approve",
+    "DONALD_VOICE": "voice",
+}
+
+
+def load() -> Config:
+    """Build the effective config: defaults < config file < environment."""
+    cfg = Config()
+
+    # Layer 2: config file. Ignore unknown keys; keep known ones type-correct.
+    file_data = _from_file()
+    known = {f.name for f in fields(cfg)}
+    updates = {}
+    for key, value in file_data.items():
+        if key not in known:
+            continue
+        if key == "shell_auto_approve" and isinstance(value, list):
+            value = tuple(str(v) for v in value)
+        updates[key] = value
+    if updates:
+        cfg = replace(cfg, **updates)
+
+    # Layer 3: environment variables.
+    env_updates = {}
+    for env_key, attr in _ENV_KEYS.items():
+        raw = os.environ.get(env_key)
+        if raw is not None:
+            env_updates[attr] = _coerce(attr, raw, getattr(cfg, attr))
+    if env_updates:
+        cfg = replace(cfg, **env_updates)
+
+    return cfg
+
+
+def shell_auto_approved(command: str, cfg: Config) -> bool:
+    """True if `command` matches one of the configured auto-approve prefixes."""
+    stripped = command.strip()
+    return any(stripped.startswith(prefix) for prefix in cfg.shell_auto_approve)

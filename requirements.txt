@@ -1,3 +1,8 @@
+# Runtime dependency. For the full setup (console command + extras) prefer:
+#   pip install -e .            # core
+#   pip install -e '.[voice]'   # + spoken replies / input
+#   pip install -e '.[dev]'     # + pytest
+anthropic>=0.40
 # The orchestration layer targets a current Anthropic SDK (adaptive thinking,
 # the effort parameter, output_config). Upgrade with `pip install -U anthropic`
 # if a kwarg is rejected.

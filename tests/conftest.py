@@ -1,3 +1,6 @@
+"""Shared fixtures: isolate HOME (memory/config) and CWD (file tools) per test."""
+
+import importlib
 """Shared test fakes and fixtures — no network, no API key.
 
 The agent loop is driven by an LLM; tests inject a scripted fake so the loop's
@@ -71,24 +74,18 @@ def callable_returning(fn: Callable[..., Any]):
 
 
 @pytest.fixture
-def project(tmp_path, monkeypatch):
-    """Create a fresh project dir and make Prism resolve `<slug>` to it.
+def home(tmp_path, monkeypatch):
+    """Point ~/.donald at a throwaway dir so tests never touch the real home."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    # Reload modules that bind paths at import time off the patched HOME.
+    import donald.memory as memory
 
-    Uses PRISM_PROJECTS_BASE convention so we never touch the real registry.
-    Returns (slug, root_path).
-    """
-    base = tmp_path / "projects"
-    base.mkdir()
-    slug = "test-app"
-    root = base / slug
-    root.mkdir()
-    # Minimal repo signal for the bootstrap scan.
-    (root / "package.json").write_text(
-        json.dumps({"name": slug, "description": "A test app for Prism.",
-                    "dependencies": {"next": "15.0.0", "react": "19.0.0"}})
-    )
-    (root / "README.md").write_text("# Test App\n\nA delightful test application.\n")
+    importlib.reload(memory)
+    return tmp_path
 
-    monkeypatch.setenv("PRISM_PROJECTS_BASE", str(base))
-    monkeypatch.setenv("PRISM_REGISTRY", str(tmp_path / "no-registry.json"))
-    return slug, root
+
+@pytest.fixture
+def workdir(tmp_path, monkeypatch):
+    """Run inside a throwaway working directory for the file tools."""
+    monkeypatch.chdir(tmp_path)
+    return tmp_path

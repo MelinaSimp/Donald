@@ -1,16 +1,3 @@
-"""Donald — a cocky, comedic personality agent with drift-proof persistence."""
+"""Donald — a Jarvis-style AI assistant."""
 
-from .conversation import ConversationManager, Message
-from .personality import (
-    append_voice_cue,
-    build_system_prompt,
-    load_personality,
-)
-
-__all__ = [
-    "ConversationManager",
-    "Message",
-    "append_voice_cue",
-    "build_system_prompt",
-    "load_personality",
-]
+__version__ = "0.1.0"

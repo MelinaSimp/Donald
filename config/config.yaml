@@ -1,0 +1,262 @@
+# DONALD Configuration Template
+#
+# Location: ~/.donald/config.yaml (YAML format)
+# Fallback:  See defaults below; all keys are optional
+#
+# Values can be overridden by environment variables (DONALD_KEY=value)
+# Examples: DONALD_MODEL, DONALD_MAX_TOKENS, DONALD_VOICE, etc.
+#
+# Generated for OpenClaw V2026.6.11
+# Last updated: 2026-07-02
+
+---
+
+# ============================================================================
+# LLM Configuration
+# ============================================================================
+
+model: claude-opus-4-8                # Anthropic model ID
+
+# API key (defaults to ANTHROPIC_API_KEY env var)
+# anthropic_api_key: sk-ant-...
+
+# Thinking depth for reasoning-heavy tasks
+thinking: high                        # Options: low, medium, high
+
+# Token limits per call
+max_tokens: 4096                      # Hard cap on output
+max_iterations: 10                    # Max tool calls per session
+
+---
+
+# ============================================================================
+# Execution Bounds & Timeouts
+# ============================================================================
+
+# Shell execution timeout (seconds)
+shell_timeout_s: 60
+
+# Maximum output characters (prevents memory bloat)
+max_output_chars: 100000
+
+# Tool frequency caps (per session)
+frequency_caps:
+  web_search: 10
+  run_shell: 20
+  write_file: 15
+
+---
+
+# ============================================================================
+# Security & Approval
+# ============================================================================
+
+approval_mode: smart                  # Options: smart, manual, hardline
+                                      # - smart: intelligent fallbacks
+                                      # - manual: confirm all mutations
+                                      # - hardline: block destructive ops
+
+# Commands that auto-approve (no prompt)
+shell_auto_approve:
+  - git status
+  - git log
+  - ls
+  - cat
+  - pwd
+  - grep
+  - find .
+
+# Patterns to block entirely (hardline)
+hardline_blocklist:
+  - rm -rf
+  - sudo reboot
+  - chmod 000
+  - :(){:|:&}
+
+---
+
+# ============================================================================
+# Memory & Persistence
+# ============================================================================
+
+memory:
+  # File path (relative to home directory)
+  file: .donald/memory.md
+
+  # Auto-save after each session
+  auto_save: true
+
+  # Backup before each /update_memory call
+  backup_before_update: true
+
+---
+
+# ============================================================================
+# Voice (Optional)
+# ============================================================================
+
+voice:
+  enabled: false                      # Set to true if installed
+
+  # Text-to-speech provider
+  tts_provider: "system"              # Options: system, elevenlabs (future)
+
+  # Speech-to-text provider
+  stt_provider: "whisper"             # Uses OpenAI Whisper locally
+
+  # Audio settings
+  sample_rate: 16000                  # Hz
+  channels: 1                         # Mono
+
+---
+
+# ============================================================================
+# Local Model Endpoints (Ollama)
+# ============================================================================
+
+endpoints:
+  # Example: Local Ollama instance with code model
+  local_coder:
+    base_url: http://localhost:11434
+    model: qwen2.5-coder:7b
+    context_window: 32000
+    use_for: "code_analysis"
+
+  # Example: Larger reasoning model
+  local_reasoning:
+    base_url: http://localhost:11434
+    model: qwen3.6:14b
+    context_window: 64000
+    use_for: "complex_reasoning"
+
+  # Fallback: always use primary Anthropic model
+  # Uncomment to enable local models (beta)
+  # primary_fallback: local_coder
+
+---
+
+# ============================================================================
+# CLI Behavior
+# ============================================================================
+
+cli:
+  # Show colored output
+  colors: true
+
+  # Show thinking process (if model supports it)
+  show_thinking: true
+
+  # History size (lines to keep in session)
+  history_size: 100
+
+  # Prompt format
+  prompt: "You: "
+
+---
+
+# ============================================================================
+# Logging & Telemetry
+# ============================================================================
+
+logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR
+  level: INFO
+
+  # File to log to (optional; if empty, logs to stdout only)
+  file: .donald/donald.log
+
+  # Rotating log size (MB)
+  max_size: 10
+  backup_count: 3
+
+# Anonymized usage telemetry (helps improve Donald)
+telemetry:
+  enabled: false
+  endpoint: https://telemetry.donald.local
+
+---
+
+# ============================================================================
+# Advanced: Custom Tool Config
+# ============================================================================
+
+tools:
+  web_search:
+    # Rate limit (queries per minute)
+    rate_limit: 6
+
+    # Timeout per request
+    timeout_s: 10
+
+  file_io:
+    # Sandbox to working directory (can't escape with ..)
+    sandbox_cwd: true
+
+    # Maximum file size to read (bytes)
+    max_read_size: 10000000           # 10 MB
+
+    # Maximum file size to write
+    max_write_size: 5000000           # 5 MB
+
+  shell:
+    # Disable certain commands (in addition to hardline_blocklist)
+    forbidden_patterns:
+      - "^sudo"
+      - "^systemctl"
+
+    # Environment variables to hide from shell
+    hide_env_vars:
+      - SSH_PRIVATE_KEY
+      - ANTHROPIC_API_KEY
+      - DATABASE_PASSWORD
+
+---
+
+# ============================================================================
+# Example: High-Security Hardline Configuration
+# ============================================================================
+
+# Uncomment and replace entire config for locked-down mode:
+
+# approval_mode: hardline
+# shell_auto_approve: []               # Require approval for ALL shell
+# max_iterations: 5                    # Very short loops
+# voice:
+#   enabled: false
+# logging:
+#   level: DEBUG                       # Full audit trail
+
+---
+
+# ============================================================================
+# Example: Developer-Friendly Configuration
+# ============================================================================
+
+# Uncomment and replace for maximum productivity:
+
+# approval_mode: smart
+# shell_auto_approve:
+#   - git
+#   - npm
+#   - python
+#   - pip
+#   - node
+#   - npx
+#   - make
+#   - ls
+#   - cat
+#   - grep
+#   - find
+# max_tokens: 8000
+# max_iterations: 20
+# thinking: high
+# voice:
+#   enabled: true
+# cli:
+#   show_thinking: true
+
+---
+
+**Built with OpenClaw V2026.6.11**
+
+For detailed documentation, see [AGENTS.md](../AGENTS.md) and [README.md](../README.md).

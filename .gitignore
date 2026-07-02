@@ -1,13 +1,13 @@
+# Secrets
+.env
+
+# Python
 __pycache__/
 *.py[cod]
-*.pyc
-*.egg-info/
-.eggs/
-build/
-dist/
-.pytest_cache/
 .venv/
 venv/
+*.egg-info/
+.python-version
 env/
 *.log
 .env

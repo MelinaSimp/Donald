@@ -1,167 +1,89 @@
-"""Tier 3 — memory that survives a restart, backed by SQLite.
+"""Donald's long-term memory — durable notes that survive between sessions.
 
-Two kinds of memory:
+Memory is a plain Markdown file in the operator's home directory
+(`~/.donald/memory.md`), so it persists no matter which directory Donald is
+launched from. At startup the CLI loads it into Donald's system prompt; the
+`remember` tool appends to it.
 
-* **facts** — durable things Donald should know about you ("I'm vegetarian",
-  "my sister's name is Mei"). Written explicitly via the ``remember`` tool or
-  by Donald when it learns something worth keeping.
-* **reminders** — time-bound nudges the proactive loop (Tier 4) acts on.
-
-Everything lives in one local .db file you can inspect with any SQLite browser.
-The class is intentionally small and synchronous — easy to reason about, easy
-to back up (just copy the file).
+Donald adds facts with `remember` (append) and tidies them with `update_memory`
+(rewrite the whole set), so notes don't drift stale or contradict each other.
+The operator can review with `/memory` and wipe with `/forget`. A one-level
+backup (`memory.bak`) guards against a careless rewrite.
 """
 
 from __future__ import annotations
 
-import sqlite3
-from dataclasses import dataclass
-from datetime import datetime, timezone
-from pathlib import Path
+import pathlib
+
+MEMORY_DIR = pathlib.Path.home() / ".donald"
+MEMORY_PATH = MEMORY_DIR / "memory.md"
+BACKUP_PATH = MEMORY_DIR / "memory.bak"
+
+# Every header line starts with `#` so `block()` strips the whole header and
+# never leaks boilerplate into Donald's remembered facts.
+_HEADER = "# Donald's memory\n# Durable facts about the operator and their work.\n"
 
 
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+def load() -> str:
+    """Return the raw memory text, or '' if there's nothing remembered yet."""
+    if not MEMORY_PATH.is_file():
+        return ""
+    return MEMORY_PATH.read_text(encoding="utf-8")
 
 
-@dataclass
-class Fact:
-    id: int
-    content: str
-    category: str
-    created_at: str
+def remember(note: str) -> str:
+    """Append a single durable fact. Returns a short confirmation."""
+    note = note.strip()
+    if not note:
+        return "Nothing to remember (empty note)."
+    MEMORY_DIR.mkdir(parents=True, exist_ok=True)
+    if not MEMORY_PATH.exists():
+        MEMORY_PATH.write_text(_HEADER, encoding="utf-8")
+    with MEMORY_PATH.open("a", encoding="utf-8") as fh:
+        fh.write(f"- {note}\n")
+    return f"Noted: {note}"
 
 
-@dataclass
-class Reminder:
-    id: int
-    text: str
-    due_at: str  # ISO8601 UTC
-    created_at: str
-    fired: bool
+def _strip_headers(text: str) -> str:
+    """Drop any Markdown header lines so we don't duplicate ours."""
+    lines = [ln for ln in text.splitlines() if not ln.lstrip().startswith("#")]
+    return "\n".join(lines).strip()
 
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS facts (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    content    TEXT NOT NULL,
-    category   TEXT NOT NULL DEFAULT 'general',
-    created_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS reminders (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    text       TEXT NOT NULL,
-    due_at     TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    fired      INTEGER NOT NULL DEFAULT 0
-);
-CREATE TABLE IF NOT EXISTS messages (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    role       TEXT NOT NULL,
-    content    TEXT NOT NULL,
-    created_at TEXT NOT NULL
-);
-"""
+def replace(content: str) -> str:
+    """Rewrite the whole memory with a curated version. Backs up the old copy."""
+    body = _strip_headers(content.strip())
+    MEMORY_DIR.mkdir(parents=True, exist_ok=True)
+    if MEMORY_PATH.exists():
+        MEMORY_PATH.replace(BACKUP_PATH)  # one-level undo for a careless rewrite
+    if not body:
+        MEMORY_PATH.write_text(_HEADER, encoding="utf-8")
+        return "Memory cleared."
+    MEMORY_PATH.write_text(f"{_HEADER}\n{body}\n", encoding="utf-8")
+    count = sum(1 for ln in body.splitlines() if ln.strip())
+    return f"Memory updated ({count} item{'s' if count != 1 else ''})."
 
 
-class Memory:
-    def __init__(self, db_path: Path | str):
-        self.db_path = Path(db_path)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row
-        self.conn.executescript(SCHEMA)
-        self.conn.commit()
+def clear() -> bool:
+    """Forget everything, backup included. True if there was anything to remove."""
+    removed = False
+    for path in (MEMORY_PATH, BACKUP_PATH):
+        if path.exists():
+            path.unlink()
+            removed = True
+    return removed
 
-    # ── facts ────────────────────────────────────────────────────────────
-    def add_fact(self, content: str, category: str = "general") -> Fact:
-        cur = self.conn.execute(
-            "INSERT INTO facts (content, category, created_at) VALUES (?, ?, ?)",
-            (content.strip(), category, _now()),
-        )
-        self.conn.commit()
-        return Fact(cur.lastrowid, content.strip(), category, _now())
 
-    def list_facts(self, limit: int = 100) -> list[Fact]:
-        rows = self.conn.execute(
-            "SELECT * FROM facts ORDER BY id DESC LIMIT ?", (limit,)
-        ).fetchall()
-        return [Fact(r["id"], r["content"], r["category"], r["created_at"]) for r in rows]
-
-    def search_facts(self, query: str, limit: int = 20) -> list[Fact]:
-        rows = self.conn.execute(
-            "SELECT * FROM facts WHERE content LIKE ? ORDER BY id DESC LIMIT ?",
-            (f"%{query}%", limit),
-        ).fetchall()
-        return [Fact(r["id"], r["content"], r["category"], r["created_at"]) for r in rows]
-
-    def forget_fact(self, fact_id: int) -> bool:
-        cur = self.conn.execute("DELETE FROM facts WHERE id = ?", (fact_id,))
-        self.conn.commit()
-        return cur.rowcount > 0
-
-    # ── reminders ────────────────────────────────────────────────────────
-    def add_reminder(self, text: str, due_at: str) -> Reminder:
-        cur = self.conn.execute(
-            "INSERT INTO reminders (text, due_at, created_at, fired) VALUES (?, ?, ?, 0)",
-            (text.strip(), due_at, _now()),
-        )
-        self.conn.commit()
-        return Reminder(cur.lastrowid, text.strip(), due_at, _now(), False)
-
-    def due_reminders(self, now_iso: str | None = None) -> list[Reminder]:
-        now_iso = now_iso or _now()
-        rows = self.conn.execute(
-            "SELECT * FROM reminders WHERE fired = 0 AND due_at <= ? ORDER BY due_at",
-            (now_iso,),
-        ).fetchall()
-        return [
-            Reminder(r["id"], r["text"], r["due_at"], r["created_at"], bool(r["fired"]))
-            for r in rows
-        ]
-
-    def list_reminders(self, include_fired: bool = False) -> list[Reminder]:
-        sql = "SELECT * FROM reminders"
-        if not include_fired:
-            sql += " WHERE fired = 0"
-        sql += " ORDER BY due_at"
-        rows = self.conn.execute(sql).fetchall()
-        return [
-            Reminder(r["id"], r["text"], r["due_at"], r["created_at"], bool(r["fired"]))
-            for r in rows
-        ]
-
-    def mark_fired(self, reminder_id: int) -> None:
-        self.conn.execute(
-            "UPDATE reminders SET fired = 1 WHERE id = ?", (reminder_id,)
-        )
-        self.conn.commit()
-
-    # ── conversation log (optional durable transcript) ───────────────────
-    def log_message(self, role: str, content: str) -> None:
-        self.conn.execute(
-            "INSERT INTO messages (role, content, created_at) VALUES (?, ?, ?)",
-            (role, content, _now()),
-        )
-        self.conn.commit()
-
-    def recent_messages(self, limit: int = 20) -> list[dict]:
-        rows = self.conn.execute(
-            "SELECT role, content FROM messages ORDER BY id DESC LIMIT ?", (limit,)
-        ).fetchall()
-        return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
-
-    # ── context injection ────────────────────────────────────────────────
-    def system_addendum(self, limit: int = 25) -> str:
-        """A short block of remembered facts to prepend to the system prompt."""
-        facts = self.list_facts(limit=limit)
-        if not facts:
-            return ""
-        lines = "\n".join(f"- {f.content}" for f in facts)
-        return (
-            "\n\nThings you remember about the user (from earlier sessions):\n"
-            + lines
-        )
-
-    def close(self) -> None:
-        self.conn.close()
+def block() -> str:
+    """The system-prompt section that surfaces remembered facts to Donald."""
+    text = load().strip()
+    # Drop the file header — Donald only needs the facts themselves.
+    lines = [ln for ln in text.splitlines() if not ln.startswith("#")]
+    facts = "\n".join(lines).strip()
+    if not facts:
+        return ""
+    return (
+        "\n\nWhat you remember about your operator and their work, from past "
+        "sessions (treat as background, not gospel — confirm if it seems stale):\n"
+        f"{facts}"
+    )
