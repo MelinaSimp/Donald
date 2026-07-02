@@ -34,23 +34,38 @@ ElevenLabs turns Donald's reply into speech.
 
 | Piece | What it is | How the gateway reaches it |
 |-------|------------|----------------------------|
-| **Donald brain** | The cocky Claude personality in `donald/` | Anthropic API (`ANTHROPIC_API_KEY`) |
+| **Donald brain** | The cocky personality in `donald/` | `DONALD_PROVIDER=anthropic` → Claude (`ANTHROPIC_API_KEY`); or `DONALD_PROVIDER=openai` → any OpenAI-compatible API (MiniMax/groq/vLLM) via `DONALD_BASE_URL` + `DONALD_API_KEY` + `DONALD_MODEL` |
 | **Hermes** | The local NousResearch agent on your computer | Its OpenAI-compatible API server at `http://127.0.0.1:8642` (`/v1/chat/completions`, `Authorization: Bearer <API_SERVER_KEY>`) |
 | **Voice** | ElevenLabs text-to-speech | `https://api.elevenlabs.io` (`ELEVENLABS_API_KEY` + a `ELEVENLABS_VOICE_ID`) |
 
-### One-time Hermes setup (on your machine)
+### Reaching Hermes: two modes (`HERMES_MODE`)
 
-Hermes is installed and run on **your** computer (not in this repo). Turn on its
-API server in `~/.hermes/.env`:
+Hermes runs on **your** machine/server (not in this repo). Depending on how
+it's packaged, pick one of:
+
+**`HERMES_MODE=cli` (recommended for the Dockerised NousResearch stack).**
+Donald drives Hermes' one-shot CLI — `hermes -z "<task>" --yolo` — which runs
+the full agent (all tools, on the local model) and prints the answer. If Hermes
+is in a container, the gateway reaches it with `docker exec`, so **run the
+gateway on the same host** (it needs Docker access). Configure:
 
 ```
-API_SERVER_ENABLED=true
-API_SERVER_HOST=127.0.0.1
-API_SERVER_PORT=8642
-API_SERVER_KEY=change-me-local-dev
+HERMES_MODE=cli
+HERMES_DOCKER_CONTAINER=hermes-workspace-rzuj-hermes-agent-1  # docker ps; blank if not containerised
+HERMES_CLI_PATH=/opt/hermes/.venv/bin/hermes
+HERMES_MODEL=hermes            # "hermes" = use the container's configured default model
+HERMES_TIMEOUT_S=300           # local models cold-load slowly
 ```
 
-Restart Hermes, then put the same key in the gateway's `HERMES_API_KEY`.
+First make sure Hermes can actually answer (its model must be installed):
+
+```
+docker exec <container> ollama-or-hermes ...           # set model.default to an installed model
+docker exec <container> /opt/hermes/.venv/bin/hermes -z "Reply OK" --yolo
+```
+
+**`HERMES_MODE=http`.** For a Hermes build that exposes an OpenAI-compatible
+API server. Point `HERMES_BASE_URL`/`HERMES_API_KEY` at it (`/v1/chat/completions`).
 
 ## Run
 

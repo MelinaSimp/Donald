@@ -9,8 +9,10 @@ import asyncio
 from gateway.config import load_settings
 from gateway.connectors.base import ConnectorResult
 from gateway.connectors.hermes import HermesConnector
+from gateway.connectors.hermes_cli import HermesCliConnector
+from gateway.connectors.openai_brain import OpenAICompatBrain
 from gateway.connectors.voice import ElevenLabsVoice, VoiceResult
-from gateway.orchestrator import DonaldOrchestrator, Session
+from gateway.orchestrator import HERMES_TOOL, DonaldOrchestrator, Session
 
 
 def run(coro):
@@ -165,6 +167,86 @@ def test_hermes_health():
 
 
 # --------------------------------------------------------------------------
+# Hermes CLI connector (docker exec / one-shot)
+# --------------------------------------------------------------------------
+def _fake_runner(code=0, out="", err="", record=None):
+    async def runner(argv, timeout_s):
+        if record is not None:
+            record.append({"argv": argv, "timeout": timeout_s})
+        return code, out, err
+
+    return runner
+
+
+def test_hermes_cli_execute_success():
+    calls = []
+    conn = HermesCliConnector(
+        container="hermes-agent",
+        runner=_fake_runner(0, "DONALD-HERMES-OK\n", record=calls),
+    )
+    result = run(conn.execute("say ok"))
+    assert result.ok
+    assert result.text == "DONALD-HERMES-OK"  # stripped
+    # Reaches Hermes via `docker exec <container> <cli> -z <task> --yolo`.
+    argv = calls[0]["argv"]
+    assert argv[:3] == ["docker", "exec", "hermes-agent"]
+    assert "-z" in argv and "say ok" in argv and "--yolo" in argv
+
+
+def test_hermes_cli_passes_model_and_context():
+    calls = []
+    conn = HermesCliConnector(
+        container="c", model="hermes3:latest", runner=_fake_runner(0, "ok", record=calls)
+    )
+    run(conn.execute("do it", context="be brief"))
+    argv = calls[0]["argv"]
+    assert "-m" in argv and "hermes3:latest" in argv
+    # context is prepended into the single prompt argument
+    prompt = argv[argv.index("-z") + 1]
+    assert prompt.startswith("be brief") and "do it" in prompt
+
+
+def test_hermes_cli_no_container_runs_directly():
+    calls = []
+    conn = HermesCliConnector(container=None, runner=_fake_runner(0, "hi", record=calls))
+    run(conn.execute("hey"))
+    argv = calls[0]["argv"]
+    assert argv[0].endswith("hermes")  # no `docker exec` prefix
+    assert "exec" not in argv
+
+
+def test_hermes_cli_nonzero_exit_is_error():
+    conn = HermesCliConnector(
+        container="c", runner=_fake_runner(1, "", "model 'x' not found")
+    )
+    result = run(conn.execute("go"))
+    assert not result.ok
+    assert "exited 1" in result.error and "not found" in result.error
+
+
+def test_hermes_cli_empty_output_is_error():
+    conn = HermesCliConnector(container="c", runner=_fake_runner(0, "   \n"))
+    result = run(conn.execute("go"))
+    assert not result.ok
+    assert "no output" in result.error
+
+
+def test_hermes_cli_empty_task_short_circuits():
+    calls = []
+    conn = HermesCliConnector(container="c", runner=_fake_runner(0, "x", record=calls))
+    result = run(conn.execute("   "))
+    assert not result.ok
+    assert calls == []  # never shelled out
+
+
+def test_hermes_cli_health_checks_version():
+    calls = []
+    conn = HermesCliConnector(container="c", runner=_fake_runner(0, "v1", record=calls))
+    assert run(conn.health()) is True
+    assert "--version" in calls[0]["argv"]
+
+
+# --------------------------------------------------------------------------
 # Orchestrator
 # --------------------------------------------------------------------------
 def test_orchestrator_delegates_then_answers():
@@ -302,6 +384,103 @@ def test_orchestrator_emits_voice_when_configured():
     voice_events = [e for e in reply.events if e["type"] == "voice"]
     assert voice_events and voice_events[0]["audio_b64"]
     assert voice.calls == ["Listen to this voice. Tremendous."]
+
+
+# --------------------------------------------------------------------------
+# OpenAI-compatible brain (e.g. MiniMax)
+# --------------------------------------------------------------------------
+def test_openai_brain_translates_request_and_response():
+    # Response mimics an OpenAI chat.completions payload with a tool call.
+    http = FakeHTTP(
+        post_resp=FakeResp(
+            json_data={
+                "choices": [
+                    {
+                        "finish_reason": "tool_calls",
+                        "message": {
+                            "content": "Let me get Hermes on it.",
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "hermes_execute",
+                                        "arguments": '{"task": "ls ~", "reason": "fs"}',
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        )
+    )
+    brain = OpenAICompatBrain(api_key="k", client=http)
+    resp = run(
+        brain.messages.create(
+            model="MiniMax-M2",
+            system=[{"type": "text", "text": "PERSONA"}, {"type": "text", "text": "CHECK"}],
+            messages=[{"role": "user", "content": "what's in home?"}],
+            tools=[HERMES_TOOL],
+            max_tokens=512,
+            temperature=0.7,
+        )
+    )
+    # Response translated back to Anthropic-shaped blocks + stop_reason.
+    assert resp.stop_reason == "tool_use"
+    assert resp.content[0].type == "text"
+    tool_block_ = resp.content[1]
+    assert tool_block_.type == "tool_use" and tool_block_.name == "hermes_execute"
+    assert tool_block_.input == {"task": "ls ~", "reason": "fs"}
+
+    # Request was translated to OpenAI shape: merged system, function tool.
+    sent = http.posts[0]["json"]
+    assert sent["messages"][0]["role"] == "system"
+    assert "PERSONA" in sent["messages"][0]["content"] and "CHECK" in sent["messages"][0]["content"]
+    assert sent["tools"][0]["type"] == "function"
+    assert sent["tools"][0]["function"]["name"] == "hermes_execute"
+    assert http.posts[0]["headers"]["Authorization"] == "Bearer k"
+
+
+def test_openai_brain_translates_tool_history_to_openai_roles():
+    # Anthropic-shaped history with an assistant tool_use + a user tool_result.
+    history = [
+        {"role": "user", "content": "do it"},
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": "delegating"},
+                {"type": "tool_use", "id": "t1", "name": "hermes_execute", "input": {"task": "x"}},
+            ],
+        },
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "done"}]},
+    ]
+    http = FakeHTTP(
+        post_resp=FakeResp(json_data={"choices": [{"finish_reason": "stop", "message": {"content": "ok"}}]})
+    )
+    brain = OpenAICompatBrain(api_key="k", client=http)
+    resp = run(brain.messages.create(model="m", system="S", messages=history, tools=[HERMES_TOOL]))
+    assert resp.stop_reason == "end_turn"
+    assert resp.content[0].type == "text" and resp.content[0].text == "ok"
+
+    msgs = http.posts[0]["json"]["messages"]
+    roles = [m["role"] for m in msgs]
+    assert roles == ["system", "user", "assistant", "tool"]
+    # The assistant message carries a tool_calls entry; the tool message echoes the id.
+    assert msgs[2]["tool_calls"][0]["function"]["name"] == "hermes_execute"
+    assert msgs[3]["tool_call_id"] == "t1" and msgs[3]["content"] == "done"
+
+
+def test_openai_brain_http_error_raises():
+    from gateway.connectors.openai_brain import BrainError
+
+    http = FakeHTTP(post_resp=FakeResp(status_code=401, text="bad key"))
+    brain = OpenAICompatBrain(api_key="nope", client=http)
+    try:
+        run(brain.messages.create(model="m", system="S", messages=[{"role": "user", "content": "hi"}]))
+        assert False, "expected BrainError"
+    except BrainError as exc:
+        assert "401" in str(exc)
 
 
 # --------------------------------------------------------------------------
