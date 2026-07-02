@@ -1,0 +1,390 @@
+# Preset: Trading Monitor & Autonomous Position Management
+# Execution: Continuous (heartbeat), on-demand signal ingest, scheduled reports
+# Purpose: Ingest signals, risk-check, backtest, execute paper/live trades, track P&L, alert on moves
+
+preset_id: trading-monitor
+name: Trading Monitor
+description: |
+  End-to-end trading orchestration: ingest signals (manual, webhook, research-originated) →
+  risk-check → backtest → execute → track positions → alert on moves/fills.
+  Operates in paper mode by default; graduates to supervised-live and autonomous with proof.
+version: "1.0"
+
+# Execution modes
+execution_modes:
+  - mode: signal_ingest
+    trigger: webhook | file_watch | manual_command | research_originated
+    examples:
+      - "Donald, buy 10 NVDA"
+      - "POST /signals with {symbol, side, size, confidence, horizon}"
+      - Research pillar proposes: "TSLA long (3-month horizon, 75% confidence)"
+
+  - mode: heartbeat
+    trigger: cron
+    frequency: market_hours
+    interval_seconds: 300  # every 5 minutes during market hours
+    checks:
+      - monitor_fills
+      - check_risk_limits
+      - alert_on_moves
+      - update_positions
+
+  - mode: scheduled_reports
+    trigger: cron
+    frequencies:
+      - daily_eod: "16:30 ET"
+      - weekly_summary: "Sunday 18:00 ET"
+      - monthly_pnl: "first Monday 08:00 ET"
+
+# Paper vs. Live graduation ladder
+modes:
+  paper:
+    name: Paper Trading (learn & validate)
+    status: always_available
+    requirements: none
+    approval_gate: none
+    cost_per_trade_usd: 0.01  # LLM cost to evaluate
+    description: |
+      Real signals, fake money. Perfect for learning, validating strategy,
+      and building confidence. Run for ≥2 weeks before any live consideration.
+    graduation_criteria:
+      - min_trades: 20
+      - min_days: 14
+      - min_sharpe_ratio: 0.5
+      - max_drawdown_percent: -15
+      - win_rate_percent: ">40"
+
+  supervised_live:
+    name: Supervised Live (per-order approval)
+    status: earned (after paper graduation)
+    requirements:
+      - paper_graduation_complete: true
+      - explicit_user_approval: required
+      - daily_spend_limit_usd: 5000  # you set this
+    approval_gate: |
+      Each order needs your one-tap push/SMS approval before execution.
+      No silent executions. Alert shows: symbol, side, size, estimated_cost, reason.
+    cost_per_trade_usd: 0.02  # LLM + approval infra
+    description: |
+      Real money, but every trade requires your explicit approval.
+      You see: order details, risk-manager reasoning, entry/exit plan.
+      Kill-switch is live; you can halt all trading with one SMS.
+    graduation_criteria:
+      - min_approved_trades: 15
+      - min_days: 7
+      - track_record_acceptable: true  # you decide
+      - zero_limit_breaches: true
+
+  autonomous_live:
+    name: Autonomous Live (bounded, self-executing)
+    status: earned (after supervised graduation)
+    requirements:
+      - supervised_graduation_complete: true
+      - hard_limits_established: required
+      - explicit_final_approval: required_annually
+      - kill_switch: always_live
+    approval_gate: none  # but hard limits ALWAYS apply
+    cost_per_trade_usd: 0.01
+    description: |
+      Donald trades without per-order approval, but within hard limits you set:
+      - Max per-trade: $X
+      - Max per-day: $Y
+      - Max drawdown before halt: -$Z
+      - Banned symbols: [list]
+      - Max leverage: N×
+      You're notified of fills immediately. Kill-switch halts everything.
+      This is the "trust but verify" tier — prove it first in paper & supervised.
+    graduation_criteria:
+      - min_supervised_trades: 30
+      - min_days: 30
+      - track_record_strong: "Sharpe >0.8, max_dd <-10%"
+      - zero_policy_violations: true
+
+# Core orchestration pipeline
+pipeline:
+  - stage: signal_ingest
+    name: Signal Ingestion
+    description: Receive signal (manual, webhook, file, research-generated)
+    inputs:
+      - symbol: str
+      - side: "BUY" | "SELL"
+      - size: float (or "% of portfolio")
+      - confidence: 0.0–1.0
+      - horizon: "1d" | "1w" | "1m" | "3m"
+      - reason: str (optional; research thesis, technical pattern, etc.)
+    cost_usd: 0.00
+    latency_seconds: 1
+    output: normalized_signal
+
+  - stage: risk_check
+    name: Pre-Trade Risk Check
+    description: |
+      Against current positions, portfolio state, and hard limits:
+      - Max position size check
+      - Max daily loss / drawdown halt
+      - Max leverage
+      - Banned symbols
+      - Margin availability
+      - Market hours validation
+    cost_usd: 0.02
+    latency_seconds: 5
+    model: claude-haiku-4-5
+    skills:
+      - Trading/check_position_limits
+      - Trading/check_portfolio_limits
+      - Trading/check_margin
+    approval_gate: REJECT_AND_ALERT if fails hard limit
+    output: risk_verdict (PASS | REJECT_HARD_LIMIT | REJECT_SOFT_LIMIT)
+
+  - stage: backtest
+    name: Backtest & Historical Validation
+    description: |
+      Replay the signal on historical data (5y if available).
+      Report: win rate, Sharpe, max drawdown, slippage impact, edge confidence.
+      No backtest = no live trade (paper-backtest ok for learning).
+    cost_usd: 0.15
+    latency_seconds: 20
+    model: claude-sonnet-5
+    skills:
+      - Trading/backtest_signal
+      - Data/fetch_historical_bars
+    approval_gate: WARN_AND_ESCALATE if Sharpe <0.3
+    output: backtest_report (edge_score, confidence, warnings)
+
+  - stage: strategy_size
+    name: Position Sizing & Strategy Layer
+    description: |
+      Apply position-sizing rules (e.g., Kelly fraction, % of portfolio, fixed dollar size).
+      Translate signal confidence + market regime into actual order size.
+    cost_usd: 0.03
+    latency_seconds: 5
+    model: claude-haiku-4-5
+    skills:
+      - Trading/kelly_fraction_calculator
+      - Trading/volatility_adjusted_sizing
+    output: intended_order (symbol, side, quantity, limit_price)
+
+  - stage: approval_gate
+    name: Approval Gate (mode-dependent)
+    description: |
+      - Paper: auto-approve
+      - Supervised: require SMS approval, 5-minute window
+      - Autonomous: skip (but risk_check already passed hard limits)
+    cost_usd: 0.00
+    latency_seconds: "1–300 (depends on mode)"
+    approval_options:
+      paper: "auto_approve"
+      supervised: "manual_sms_approval"
+      autonomous: "skip"
+    output: approval_decision (APPROVED | REJECTED | TIMEOUT)
+
+  - stage: order_execution
+    name: Order Routing & Execution
+    description: |
+      Send to broker (Alpaca paper or live).
+      Idempotent: if duplicate arrives, returns prior fill instead of double-sending.
+      Real-time fill tracking.
+    cost_usd: 0.01
+    latency_seconds: 10
+    model: claude-haiku-4-5
+    skills:
+      - Trading/place_order
+      - Alpaca/submit_order
+    output: fill_details (order_id, fill_price, quantity, timestamp)
+
+  - stage: position_tracking
+    name: Position & P&L Tracking
+    description: |
+      Update portfolio state: entry price, current price, unrealized P&L,
+      duration, win/loss status. Feed into heartbeat monitoring and daily reports.
+    cost_usd: 0.00 (read-only)
+    latency_seconds: 5
+    skills:
+      - Trading/update_position
+      - Database/upsert_position
+    output: updated_position_record
+
+  - stage: alerting
+    name: Alert & Notification
+    description: |
+      Notify on: fill, >2% move, loss approaching -10% of position, risk limit exceeded.
+      Channel: SMS (Twilio), Slack, push notification.
+    cost_usd: 0.01 per alert
+    latency_seconds: 10
+    skills:
+      - Twilio/send_sms
+      - Slack/post_message
+    output: notification_sent
+
+# Heartbeat monitoring (continuous)
+heartbeat:
+  enabled: true
+  interval_seconds: 300  # every 5 min during market hours
+  during_market_hours_only: true
+  checks:
+    - name: check_open_fills
+      every_seconds: 60
+      action: "Poll broker for fills on pending orders"
+
+    - name: check_risk_limits
+      every_seconds: 300
+      action: "Verify no position exceeded hard limits; if so, alert & halt"
+
+    - name: check_moves
+      every_seconds: 600
+      action: "Alert if any position moved >2%"
+
+    - name: update_pnl
+      every_seconds: 300
+      action: "Refresh P&L; log daily running total"
+
+# Scheduled reports
+reports:
+  daily_eod:
+    name: Daily End-of-Day Report
+    at: "16:30 ET"
+    content:
+      - Total P&L (realized + unrealized)
+      - Win rate (today vs. weekly vs. monthly)
+      - Biggest winner, loser
+      - Open positions + entry rationale
+      - Risk exposure summary
+    output: text_summary + SMS + drive_log
+
+  weekly_summary:
+    name: Weekly Trading Summary
+    day: Sunday
+    at: "18:00 ET"
+    content:
+      - Weekly P&L + Sharpe ratio
+      - Win/loss breakdown by strategy
+      - Drawdown history
+      - Mode graduation progress (if paper/supervised)
+      - Next week thesis
+    output: markdown_doc + drive_archive + canva_deck (optional)
+
+  monthly_pnl:
+    name: Monthly P&L Report
+    day: "first Monday"
+    at: "08:00 ET"
+    content:
+      - Monthly return % vs. benchmark
+      - Largest trades, best ideas
+      - Risk metrics (Sharpe, Sortino, drawdown)
+      - Tax lot summary (realized gains/losses)
+      - Lessons learned, improvements for next month
+    output: html_report + pdf + drive_archive
+
+# Guardrails & hard limits (ALWAYS ON)
+guardrails:
+  hard_limits:
+    max_per_trade_usd:
+      paper: null  # unlimited (fake money)
+      supervised: 5000  # you set this
+      autonomous: 2500  # conservative; can increase after proof
+
+    max_per_day_loss_usd:
+      paper: null
+      supervised: 10000
+      autonomous: 5000
+
+    max_portfolio_drawdown_percent:
+      paper: null
+      supervised: -20
+      autonomous: -10  # Auto-halt all trading if portfolio down >10%
+
+    max_leverage:
+      paper: "3×"
+      supervised: "1× (no margin)"
+      autonomous: "1.5× (after 3 months proof)"
+
+    banned_symbols: []  # e.g. ["TSLA", "GME"]
+
+    max_correlation_per_position_percent: 0.7
+      # If two positions are >70% correlated, can't open both
+
+  kill_switch:
+    enabled: true
+    description: "One SMS/command halts ALL trading immediately"
+    example: "sms: donald halt"
+    effect: "Pauses new signal ingest and order execution; existing fills still tracked"
+
+  dry_run_mode:
+    enabled: true
+    description: "Evaluate a signal without executing"
+    example: "donald backtest NVDA BUY 100 (no fill, just analysis)"
+
+  approval_timeout:
+    duration_seconds: 300  # 5-minute window for SMS approval (supervised mode)
+    action_on_timeout: REJECT_ORDER
+
+# Integrations required
+integrations_required:
+  - Alpaca (or IBKR, Coinbase, via Composio)
+  - Market_Data (quotes, bars; free tier sufficient for paper)
+  - Database (Postgres for positions, P&L, audit log)
+
+integrations_optional:
+  - Twilio (SMS alerts; fallback to email)
+  - Slack (trade notifications)
+  - Google_Drive (report archival)
+  - Canva (weekly deck generation)
+  - Yahoo_Finance (alternative data source via Composio)
+
+# Memory & state
+memory:
+  positions_table: trading.positions (live state)
+  fills_table: trading.fills (immutable log)
+  signals_table: trading.signals (ingest history)
+  pnl_table: trading.pnl_daily (rolling P&L)
+  audit_log: audit.trades (every action, reasoning, outcome)
+
+  recalls:
+    - "What was my best trade last month?"
+    - "Show me all TSLA trades and their outcomes"
+    - "What's my 3-month Sharpe on momentum signals?"
+
+# Cost model
+costs:
+  per_signal_usd: 0.01
+  per_backtest_usd: 0.15
+  per_trade_execution_usd: 0.01
+  per_alert_usd: 0.005
+  monthly_budget_estimate: "$50–150" (depends on signal frequency & mode)
+
+# Success metrics
+metrics:
+  - win_rate_percent
+  - sharpe_ratio
+  - max_drawdown_percent
+  - trades_executed
+  - risk_limit_breaches (should be 0)
+  - approval_gate_efficacy (% orders halted for good reason)
+  - average_backtest_edge_score
+  - time_to_execution_seconds
+
+# Example workflows
+example_workflows:
+  manual_trade:
+    prompt: "Donald, buy 50 NVDA at market"
+    mode: paper → supervised → autonomous (depending on graduation)
+    steps: "signal_ingest → risk_check → backtest (skip in paper?) → approval → execute"
+    result: "Fill logged, position tracked, daily report updated"
+
+  webhook_signal:
+    prompt: "POST /signals {symbol: TSLA, side: BUY, size: 100, confidence: 0.8, reason: earnings_beat}"
+    mode: continuous (24/7 ingest)
+    steps: "parse → risk_check → backtest → strategy_size → approval → execute → track"
+    result: "Order filled or rejected; alert sent"
+
+  scheduled_report:
+    prompt: "Every Sunday 6pm, email me weekly trading summary"
+    mode: scheduled
+    steps: "collect_pnl → analyze_trades → generate_report → email"
+    result: "Weekly report in inbox + Drive"
+
+  research_originated_trade:
+    prompt: "Research pillar proposes: DDOG (long, 3-month, 70% confidence, thesis: ...)"
+    mode: graduated (starts supervised, moves to autonomous after wins)
+    steps: "research_recommendation → risk_check → backtest → approval → execute"
+    result: "Position opened, tracked, integrated into portfolio risk model"
