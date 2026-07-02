@@ -7,6 +7,8 @@ routes, gates, and streams.
 Endpoints
 ---------
 GET  /health            liveness + which pieces are configured/reachable
+GET  /api/dashboard     current state snapshot (actions, status, metrics)
+GET  /dashboard         HTML control panel with live polling
 POST /api/chat          one-shot turn -> {text, events}
 POST /api/voice         ad-hoc text-to-speech -> audio/mpeg
 WS   /ws                streaming chat: send {type:"chat", session_id, message},
@@ -28,6 +30,7 @@ from typing import Dict, Optional
 from .config import Settings, load_settings
 from .connectors.hermes import HermesConnector
 from .connectors.voice import ElevenLabsVoice
+from .dashboard_state import get_dashboard_state
 from .orchestrator import DonaldOrchestrator, Session
 
 log = logging.getLogger("donald.gateway")
@@ -137,13 +140,44 @@ def create_app(
             "voice_configured": settings.voice_configured,
         }
 
+    @app.get("/api/dashboard")
+    async def dashboard_api() -> dict:
+        """Return current dashboard state: actions, status, metrics."""
+        state = get_dashboard_state()
+        return state.snapshot()
+
+    @app.get("/dashboard")
+    async def dashboard_page():
+        """Serve the Hermes command center dashboard."""
+        from fastapi.responses import HTMLResponse
+        html = _dashboard_html()
+        return HTMLResponse(content=html)
+
+    @app.post("/api/dashboard/pause")
+    async def dashboard_pause():
+        """Pause the agent."""
+        state = get_dashboard_state()
+        state.pause()
+        return {"status": "paused"}
+
+    @app.post("/api/dashboard/resume")
+    async def dashboard_resume():
+        """Resume the agent."""
+        state = get_dashboard_state()
+        state.resume()
+        return {"status": "resumed"}
+
     @app.post("/api/chat")
     async def chat(payload: dict) -> dict:
         session_id = str(payload.get("session_id") or "default")
         message = str(payload.get("message") or "").strip()
         if not message:
             return {"error": "message is required"}
+        state = get_dashboard_state()
+        state.set_user_message(message)
         reply = await orch.run(get_session(session_id), message)
+        for event in reply.events:
+            state.record_event(session_id, event)
         return {"text": reply.text, "events": reply.events}
 
     @app.post("/api/voice")
@@ -182,7 +216,10 @@ def create_app(
                         {"type": "error", "text": "message is required"}
                     )
                     continue
+                state = get_dashboard_state()
+                state.set_user_message(message)
                 async for event in orch.run_events(get_session(session_id), message):
+                    state.record_event(session_id, event)
                     await websocket.send_json(event)
         except WebSocketDisconnect:
             return
@@ -194,6 +231,395 @@ def create_app(
                 pass
 
     return app
+
+
+def _dashboard_html() -> str:
+    """HTML for the Hermes Command Center control panel."""
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hermes Command Center</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 20px;
+        }
+
+        h1 {
+            font-size: 28px;
+            font-weight: 600;
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: #1e293b;
+            border: 1px solid #475569;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .status-live {
+            background: #7c3aed;
+            border-color: #6d28d9;
+        }
+
+        .status-paused {
+            background: #dc2626;
+            border-color: #b91c1c;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            padding: 8px 16px;
+            border: 1px solid #475569;
+            border-radius: 6px;
+            background: #1e293b;
+            color: #e2e8f0;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background: #334155;
+            border-color: #64748b;
+        }
+
+        button.primary {
+            background: #3b82f6;
+            border-color: #2563eb;
+        }
+
+        button.primary:hover {
+            background: #2563eb;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 30px;
+        }
+
+        .stat-tile {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 16px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: #94a3b8;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #3b82f6;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        h2 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            color: #94a3b8;
+        }
+
+        .activity-feed {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .activity-item {
+            padding: 12px 16px;
+            border-bottom: 1px solid #334155;
+            font-size: 13px;
+        }
+
+        .activity-item:last-child {
+            border-bottom: none;
+        }
+
+        .activity-item.ok {
+            border-left: 3px solid #10b981;
+        }
+
+        .activity-item.error {
+            border-left: 3px solid #ef4444;
+        }
+
+        .activity-item.pending {
+            border-left: 3px solid #f59e0b;
+        }
+
+        .activity-item.declined {
+            border-left: 3px solid #8b5cf6;
+        }
+
+        .activity-status {
+            font-weight: 600;
+            margin-right: 8px;
+        }
+
+        .activity-status.ok::before { content: "✓ "; color: #10b981; }
+        .activity-status.error::before { content: "✕ "; color: #ef4444; }
+        .activity-status.pending::before { content: "⟳ "; color: #f59e0b; }
+        .activity-status.declined::before { content: "⊘ "; color: #8b5cf6; }
+
+        .activity-task {
+            margin-top: 4px;
+            color: #cbd5e1;
+            word-break: break-word;
+        }
+
+        .empty-state {
+            padding: 32px 16px;
+            text-align: center;
+            color: #64748b;
+        }
+
+        .preview {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 4px;
+            padding: 8px 12px;
+            margin-top: 8px;
+            font-size: 12px;
+            font-family: "Monaco", "Courier New", monospace;
+            color: #cbd5e1;
+            word-break: break-word;
+            max-height: 100px;
+            overflow-y: auto;
+        }
+
+        .last-message {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 16px;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .timestamp {
+            font-size: 11px;
+            color: #64748b;
+            margin-right: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎛️ Hermes Command Center</h1>
+            <div>
+                <div class="status-pill" id="status">
+                    <span class="status-dot"></span>
+                    <span id="status-text">Loading...</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="controls" style="margin-bottom: 20px;">
+            <button id="btn-pause" class="primary">Stop</button>
+            <button id="btn-resume">Resume</button>
+        </div>
+
+        <div class="stats">
+            <div class="stat-tile">
+                <div class="stat-label">Turns</div>
+                <div class="stat-value" id="stat-turns">0</div>
+            </div>
+            <div class="stat-tile">
+                <div class="stat-label">Hermes Actions</div>
+                <div class="stat-value" id="stat-actions">0</div>
+            </div>
+            <div class="stat-tile">
+                <div class="stat-label">Status</div>
+                <div class="stat-value" id="stat-status">Ready</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Live Activity</h2>
+            <div class="activity-feed" id="activity-feed">
+                <div class="empty-state">Waiting for activity...</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Last User Input</h2>
+            <div class="last-message" id="last-message">
+                <p style="color: #64748b;">No messages yet</p>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Last Response</h2>
+            <div class="last-message" id="last-response">
+                <p style="color: #64748b;">Waiting for response...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let paused = false;
+
+        async function updateDashboard() {
+            try {
+                const resp = await fetch('/api/dashboard');
+                const data = await resp.json();
+
+                // Update status
+                const statusPill = document.getElementById('status');
+                const statusText = document.getElementById('status-text');
+                paused = data.paused;
+
+                if (paused) {
+                    statusPill.className = 'status-pill status-paused';
+                    statusText.textContent = '● HALTED';
+                } else {
+                    statusPill.className = 'status-pill status-live';
+                    statusText.textContent = '● LIVE';
+                }
+
+                // Update stats
+                document.getElementById('stat-turns').textContent = data.turn_count;
+                document.getElementById('stat-actions').textContent = data.hermes_actions;
+                document.getElementById('stat-status').textContent = paused ? 'Halted' : 'Ready';
+
+                // Update activity feed
+                const feed = document.getElementById('activity-feed');
+                const actions = data.actions || [];
+
+                if (actions.length === 0) {
+                    feed.innerHTML = '<div class="empty-state">Waiting for activity...</div>';
+                } else {
+                    feed.innerHTML = actions.map(action => {
+                        const ts = new Date(action.timestamp * 1000).toLocaleTimeString();
+                        let html = `<div class="activity-item ${action.status}">
+                            <span class="timestamp">${ts}</span>
+                            <span class="activity-status ${action.status}"></span>
+                            <strong>${action.name}</strong>`;
+
+                        if (action.task) {
+                            html += `<div class="activity-task">${escapeHtml(action.task.substring(0, 100))}${action.task.length > 100 ? '...' : ''}</div>`;
+                        }
+
+                        if (action.preview) {
+                            html += `<div class="preview">${escapeHtml(action.preview.substring(0, 200))}${action.preview.length > 200 ? '...' : ''}</div>`;
+                        }
+
+                        if (action.error) {
+                            html += `<div class="preview" style="color: #ef4444;">${escapeHtml(action.error.substring(0, 200))}</div>`;
+                        }
+
+                        html += '</div>';
+                        return html;
+                    }).join('');
+                }
+
+                // Update last message
+                const lastMsg = document.getElementById('last-message');
+                if (data.last_user_message) {
+                    lastMsg.textContent = data.last_user_message;
+                } else {
+                    lastMsg.innerHTML = '<p style="color: #64748b;">No messages yet</p>';
+                }
+
+                // Update last response
+                const lastResp = document.getElementById('last-response');
+                if (data.last_response) {
+                    lastResp.textContent = data.last_response;
+                } else {
+                    lastResp.innerHTML = '<p style="color: #64748b;">Waiting for response...</p>';
+                }
+
+            } catch (e) {
+                console.error('Dashboard update failed:', e);
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        document.getElementById('btn-pause').addEventListener('click', async () => {
+            await fetch('/api/dashboard/pause', {method: 'POST'});
+            updateDashboard();
+        });
+
+        document.getElementById('btn-resume').addEventListener('click', async () => {
+            await fetch('/api/dashboard/resume', {method: 'POST'});
+            updateDashboard();
+        });
+
+        // Initial load and then poll every 2 seconds
+        updateDashboard();
+        setInterval(updateDashboard, 2000);
+    </script>
+</body>
+</html>"""
 
 
 def main() -> None:  # pragma: no cover - thin runtime entrypoint
