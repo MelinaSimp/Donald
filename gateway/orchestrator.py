@@ -21,6 +21,7 @@ layer can stream them to the UI verbatim. ``run()`` drains it into one reply.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional
@@ -204,7 +205,34 @@ class DonaldOrchestrator:
             yield {"type": "tool_result", "name": "hermes", "error": "empty task"}
             return
 
-        result = await self.hermes.execute(task)
+        # Stream Hermes' live activity (stdout lines) as events while the run
+        # is in flight, when the connector supports it. Lines arrive via a
+        # queue so this async generator can keep yielding mid-execution.
+        if getattr(self.hermes, "supports_streaming", False):
+            queue: "asyncio.Queue[Optional[str]]" = asyncio.Queue()
+
+            def _on_line(line: str) -> None:
+                queue.put_nowait(line)
+
+            async def _execute():
+                try:
+                    return await self.hermes.execute(task, on_line=_on_line)
+                finally:
+                    queue.put_nowait(None)  # sentinel: no more lines
+
+            exec_task = asyncio.ensure_future(_execute())
+            while True:
+                line = await queue.get()
+                if line is None:
+                    break
+                yield {
+                    "type": "hermes_line",
+                    "name": "hermes",
+                    "text": redact(line, 500),
+                }
+            result = await exec_task
+        else:
+            result = await self.hermes.execute(task)
         log.info("hermes task=%s ok=%s", redact(task, 200), result.ok)
 
         if not result.ok:

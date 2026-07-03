@@ -38,7 +38,13 @@ class AgentConnector(Protocol):
         ...
 
     async def execute(self, task: str, *, context: Optional[str] = None) -> ConnectorResult:
-        """Run one task to completion and return the result."""
+        """Run one task to completion and return the result.
+
+        A connector that can surface live progress may additionally accept an
+        ``on_line`` keyword (called with each output line as it happens) and
+        advertise it with a class attribute ``supports_streaming = True`` —
+        the orchestrator only passes ``on_line`` when that flag is present.
+        """
         ...
 
     async def aclose(self) -> None:

@@ -239,6 +239,44 @@ def test_hermes_cli_empty_task_short_circuits():
     assert calls == []  # never shelled out
 
 
+def test_hermes_cli_streams_lines_live():
+    seen = []
+
+    async def stream_runner(argv, timeout_s, on_line):
+        on_line("[hermes] thinking…")
+        on_line("[hermes] running: ls ~")
+        return 0, "[hermes] thinking…\n[hermes] running: ls ~\nDONE", ""
+
+    conn = HermesCliConnector(container="c", stream_runner=stream_runner)
+    result = run(conn.execute("go", on_line=seen.append))
+    assert result.ok
+    assert result.text.endswith("DONE")
+    assert seen == ["[hermes] thinking…", "[hermes] running: ls ~"]
+
+
+def test_hermes_cli_streaming_replays_when_only_plain_runner():
+    # A custom plain runner (no stream runner) still feeds on_line, after the
+    # fact, so observers keep working in tests and exotic setups.
+    seen = []
+    conn = HermesCliConnector(container="c", runner=_fake_runner(0, "a\n\n b \n"))
+    result = run(conn.execute("go", on_line=seen.append))
+    assert result.ok
+    assert seen == ["a", " b "]
+
+
+def test_hermes_cli_broken_observer_does_not_break_run():
+    def explode(_line):
+        raise RuntimeError("bad UI hook")
+
+    async def stream_runner(argv, timeout_s, on_line):
+        on_line("line 1")
+        return 0, "line 1\nOK", ""
+
+    conn = HermesCliConnector(container="c", stream_runner=stream_runner)
+    result = run(conn.execute("go", on_line=explode))
+    assert result.ok and result.text.endswith("OK")
+
+
 def test_hermes_cli_health_checks_version():
     calls = []
     conn = HermesCliConnector(container="c", runner=_fake_runner(0, "v1", record=calls))
@@ -286,6 +324,61 @@ def test_orchestrator_delegates_then_answers():
     assert [m.role for m in hist] == ["user", "assistant", "user", "assistant"]
     assert isinstance(hist[1].content, list)  # assistant tool_use blocks
     assert isinstance(hist[2].content, list)  # tool_result blocks
+
+
+def test_orchestrator_streams_hermes_lines_as_events():
+    """A streaming-capable connector's live lines surface as hermes_line
+    events, in order, between the tool_call and its tool_result."""
+
+    class StreamingFakeHermes(FakeHermes):
+        supports_streaming = True
+
+        async def execute(self, task, *, context=None, on_line=None):
+            self.calls.append(task)
+            if on_line is not None:
+                on_line("step 1: opening the app")
+                on_line("step 2: done")
+            return self._result
+
+    responses = [
+        FakeResponse(
+            [tool_block("t1", "hermes_execute", {"task": "open spotify"})],
+            stop_reason="tool_use",
+        ),
+        FakeResponse([text_block("Spotify's open. Tremendous.")], stop_reason="end_turn"),
+    ]
+    hermes = StreamingFakeHermes(
+        ConnectorResult(ok=True, text="opened", connector="hermes")
+    )
+    orch = DonaldOrchestrator(
+        llm=FakeLLM(responses), hermes=hermes, settings=_settings(), personality_text="P"
+    )
+    reply = run(orch.run(Session(session_id="s-stream"), "open spotify"))
+
+    types = [e["type"] for e in reply.events]
+    lines = [e["text"] for e in reply.events if e["type"] == "hermes_line"]
+    assert lines == ["step 1: opening the app", "step 2: done"]
+    # Ordered: dispatch first, live activity in the middle, result last.
+    assert types.index("tool_call") < types.index("hermes_line") < types.index("tool_result")
+    assert reply.text == "Spotify's open. Tremendous."
+
+
+def test_orchestrator_plain_connector_is_untouched_by_streaming():
+    # FakeHermes has no supports_streaming flag: the orchestrator must not
+    # pass on_line to it (its execute() doesn't accept the kwarg).
+    responses = [
+        FakeResponse(
+            [tool_block("t1", "hermes_execute", {"task": "x"})], stop_reason="tool_use"
+        ),
+        FakeResponse([text_block("done")], stop_reason="end_turn"),
+    ]
+    hermes = FakeHermes(ConnectorResult(ok=True, text="y", connector="hermes"))
+    orch = DonaldOrchestrator(
+        llm=FakeLLM(responses), hermes=hermes, settings=_settings(), personality_text="P"
+    )
+    reply = run(orch.run(Session(session_id="s-plain"), "go"))
+    assert "hermes_line" not in [e["type"] for e in reply.events]
+    assert reply.text == "done"
 
 
 def test_orchestrator_gates_injected_hermes_output():

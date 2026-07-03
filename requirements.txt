@@ -13,6 +13,7 @@ pyyaml>=6.0
 httpx>=0.27       # Hermes (OpenAI-compatible) + ElevenLabs HTTP clients
 fastapi>=0.110    # the REST + WebSocket server your UI talks to
 uvicorn>=0.29     # ASGI server that runs the gateway
+websockets>=12    # WebSocket support for uvicorn (plain uvicorn has none — /ws 404s without it)
 # fastapi>=0.110      # serve mockups
 # uvicorn>=0.29
 

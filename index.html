@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Aether — your cosmic copilot</title>
+  <title>Donald — always on. Clap to wake.</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%23ff8a3d'/%3E%3C/svg%3E" />
   <style>
     :root { --accent: #ff8a3d; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -78,6 +79,57 @@
       backdrop-filter: blur(6px); text-transform: uppercase;
     }
     .perf.on { color: var(--accent); border-color: var(--accent); }
+
+    /* Top-right controls: terminal toggle + ears (clap-wake) status. */
+    .controls {
+      top: 18px; right: 18px; pointer-events: auto;
+      display: flex; flex-direction: column; align-items: flex-end; gap: 10px;
+    }
+    .chipbtn {
+      cursor: pointer; font: 11px/1 "Inter", system-ui, sans-serif;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      color: #9fb3c8; padding: 8px 12px; border-radius: 999px;
+      background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+      backdrop-filter: blur(6px);
+    }
+    .chipbtn:hover { color: #fff; border-color: rgba(255,255,255,0.25); }
+    .chipbtn.on  { color: #34d399; border-color: rgba(52,211,153,0.5); }
+    .chipbtn.bad { color: #ff6b5e; border-color: rgba(255,107,94,0.5); }
+
+    /* Ears panel: live level meter + the loudness gate slider. The tick on
+       the meter is the threshold — only peaks past it can wake Donald. */
+    .ears-panel {
+      display: flex; flex-direction: column; gap: 7px; align-items: stretch;
+      min-width: 190px; padding: 10px 12px; border-radius: 12px;
+      background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.07);
+      backdrop-filter: blur(6px);
+    }
+    .ears-panel label {
+      font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+      color: #9fb3c8;
+    }
+    .meter {
+      position: relative; height: 6px; border-radius: 999px; overflow: hidden;
+      background: rgba(255,255,255,0.07);
+    }
+    .meter .fill {
+      position: absolute; inset: 0 auto 0 0; width: 0%;
+      background: #9fb3c8; border-radius: 999px; transition: width 60ms linear;
+    }
+    .meter .fill.hot { background: var(--accent); }
+    .ears-panel input[type="range"] { width: 100%; accent-color: var(--accent); }
+
+    /* Live transcript caption while Donald is listening. */
+    #caption {
+      position: fixed; z-index: 5; left: 50%; bottom: 12vh;
+      transform: translateX(-50%); max-width: min(72vw, 720px);
+      padding: 10px 18px; border-radius: 14px; text-align: center;
+      font-size: 16px; letter-spacing: 0.01em; color: #ffe6c4;
+      background: rgba(10, 8, 4, 0.65); border: 1px solid rgba(255,176,46,0.35);
+      backdrop-filter: blur(8px); opacity: 0; pointer-events: none;
+      transition: opacity 0.15s ease;
+    }
+    #caption.show { opacity: 1; }
   </style>
 </head>
 <body>
@@ -86,18 +138,33 @@
   </div>
 
   <div class="hud top">
-    <div class="brand">Aether<span class="dot">.</span></div>
-    <div class="tagline">your cosmic copilot</div>
+    <div class="brand">Donald<span class="dot">.</span></div>
+    <div class="tagline">always on — clap (loud) to wake</div>
+  </div>
+
+  <!-- Top-right: the terminal page toggle + the ears (clap-wake) controls. -->
+  <div class="hud controls">
+    <button class="chipbtn" id="term-toggle" title="Ops terminal (` or T)">⌨ terminal</button>
+    <button class="chipbtn" id="ears-chip" title="Clap-wake status — click to (re)arm the mic">👂 ears: off</button>
+    <div class="ears-panel">
+      <label for="clap-threshold">clap loudness gate</label>
+      <div class="meter"><div class="fill" id="ears-meter"></div></div>
+      <input type="range" id="clap-threshold" min="15" max="90" step="1"
+             title="How loud a clap must be to wake Donald. Higher = louder required." />
+    </div>
   </div>
 
   <button class="hud perf" id="perf-toggle" title="Performance mode (P)">⚡ perf</button>
 
+  <!-- Live transcript while listening. -->
+  <div id="caption"></div>
+
   <!-- Optional dock targets. An agent marked working settles near the panel
        whose data-agent matches its id (else it just pulses in orbit). -->
   <div class="hud docks" id="docks">
+    <div class="panel" data-agent="hermes"><span class="p-dot"></span>Hermes</div>
     <div class="panel" data-agent="scout"><span class="p-dot"></span>Scout</div>
     <div class="panel" data-agent="forge"><span class="p-dot"></span>Forge</div>
-    <div class="panel" data-agent="aegis"><span class="p-dot"></span>Aegis</div>
   </div>
 
   <!--

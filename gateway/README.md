@@ -76,6 +76,12 @@ set -a; source gateway/.env; set +a       # load them into the env
 python -m gateway.server                  # serves on 127.0.0.1:8765
 ```
 
+The gateway also serves the **orb UI** itself: open `http://127.0.0.1:8765/`
+and you get the full desktop interface (clap-to-wake orb + ops terminal page)
+already wired to this gateway's `/ws` on the same origin. For the always-on
+desktop setup (launch at login, app window, clap tuning) see
+[`desktop/README.md`](../desktop/README.md).
+
 Check it's alive (and whether Hermes is reachable):
 
 ```bash
@@ -103,6 +109,7 @@ POST /api/chat   {"session_id": "abc", "message": "what's in my downloads folder
 |-------|---------|
 | `delta` | a chunk of Donald's spoken text |
 | `tool_call` | Donald is delegating to Hermes (`task`, `reason`) |
+| `hermes_line` | one line of Hermes' live output while it works (CLI mode) — feed it to a terminal/log view |
 | `tool_result` | Hermes came back (`flagged`, `flag_reasons`, `preview`) |
 | `voice` | base64 MP3 of Donald's reply (`audio_b64`, `mime`) |
 | `final` | the finished reply text |

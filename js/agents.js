@@ -9,6 +9,13 @@
 
 export const AGENTS = [
   {
+    // The real one: the local Hermes agent that runs terminal/files/apps on
+    // the user's machine. The gateway dispatches to it; the others are show.
+    id: 'hermes', name: 'Hermes', specialty: 'Hands on the machine',
+    color: '#ffb02e', // amber — matches the wake/listening accent
+    orbit: { radius: 1.9, speed: 0.24, phase: 5.4, tilt: 0.3, dir: -1 },
+  },
+  {
     id: 'scout', name: 'Scout', specialty: 'Research & retrieval',
     color: '#22d3ee', // cyan
     orbit: { radius: 2.05, speed: 0.20, phase: 0.0, tilt: 0.34, dir: 1 },

@@ -7,7 +7,7 @@ import { RingSystem } from './rings.js';
 import { Effects } from './effects.js';
 import { AGENTS } from './agents.js';
 import { buildStates } from './states.js';
-import { Transport } from './transport.js';
+import { DonaldController } from './donald.js';
 import { prefersReducedMotion } from './util.js';
 
 const _wv = new THREE.Vector3();
@@ -250,8 +250,11 @@ window.enableMic = () => app.audio.attachMic().then(() => app.audio.resume());
 window.attachAudio = (el, opts) => app.audio.attachElement(el, opts);
 addEventListener('pointerdown', () => app.audio.resume(), { passive: true });
 
-// --- Transport ---------------------------------------------------------------
-// Connect a WebSocket if one is configured (window.AETHER_WS), otherwise run a
-// demo driver that cycles the scene so it's alive without a backend.
-app.transport = new Transport(app, { url: window.AETHER_WS });
-window.aetherEvent = (msg) => app.transport.handle(msg); // route an event by hand
+// --- Donald ------------------------------------------------------------------
+// The always-on desk-side loop: clap-to-wake, speech in, gateway /ws events
+// out to the orb + the ops terminal. Falls back to the scripted demo driver
+// when the gateway isn't reachable (e.g. opened as a bare static file).
+const donald = new DonaldController(app);
+donald.init();
+window.donald = donald;
+window.donaldEvent = (msg) => donald.handle(msg); // route a gateway event by hand

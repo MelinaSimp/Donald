@@ -23,6 +23,7 @@ Run it::
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Dict, Optional
 
 from .config import Settings, load_settings
@@ -85,7 +86,7 @@ def create_app(
 ):
     """Build the FastAPI app. ``orchestrator`` is injectable for tests."""
     try:
-        from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+        from fastapi import FastAPI, WebSocketDisconnect
         from fastapi.middleware.cors import CORSMiddleware
         from fastapi.responses import Response
     except ImportError as exc:  # pragma: no cover - dependency guard
@@ -164,8 +165,28 @@ def create_app(
             )
         return Response(content=result.audio, media_type=result.mime)
 
-    @app.websocket("/ws")
-    async def ws(websocket: WebSocket) -> None:
+    # --- The Orb UI -------------------------------------------------------
+    # The desktop interface (repo-root index.html + js/) is served straight
+    # from the gateway so http://127.0.0.1:8765/ IS the app — no separate
+    # static server, and the UI reaches /ws on the same origin.
+    ui_root = Path(__file__).resolve().parent.parent
+    if (ui_root / "index.html").exists():
+        from fastapi.responses import FileResponse
+        from fastapi.staticfiles import StaticFiles
+
+        @app.get("/", include_in_schema=False)
+        async def ui_index():
+            return FileResponse(ui_root / "index.html")
+
+        if (ui_root / "js").is_dir():
+            app.mount("/js", StaticFiles(directory=ui_root / "js"), name="ui-js")
+
+    # NOTE: registered as a plain Starlette websocket route, NOT
+    # @app.websocket. Under ``from __future__ import annotations`` the
+    # ``websocket: WebSocket`` hint is a string FastAPI can't resolve for a
+    # closure (WebSocket is imported inside create_app), so its DI mistakes
+    # the parameter for a required query field and 403s every handshake.
+    async def ws(websocket) -> None:
         await websocket.accept()
         try:
             while True:
@@ -192,6 +213,10 @@ def create_app(
                 await websocket.send_json({"type": "error", "text": str(exc)})
             except Exception:
                 pass
+
+    from starlette.routing import WebSocketRoute
+
+    app.router.routes.append(WebSocketRoute("/ws", ws))
 
     return app
 
