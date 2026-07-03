@@ -46,6 +46,25 @@ export default function DonaldOrb() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
 
+  // Voice / clap-to-wake wiring
+  const CLAP_THRESHOLD = 0.72;        // 0..1 peak; high so only a loud clap wakes him
+  const streamRef = useRef<MediaStream | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const clapDataRef = useRef<Uint8Array | null>(null);
+  const clapRafRef = useRef<number | null>(null);
+  const lastClapRef = useRef(0);
+  const recognitionRef = useRef<any>(null);
+  const awakeRef = useRef(false);       // true = in a live conversation
+  const listeningRef = useRef(false);
+  const gotSpeechRef = useRef(false);
+  const noSpeechRef = useRef(0);
+  const [voiceOn, setVoiceOn] = useState(false);
+  const [voiceMsg, setVoiceMsg] = useState("");
+  // Function holders so send()/startListening() can call each other regardless
+  // of definition order.
+  const wantListenRef = useRef<() => void>(() => {});
+  const sendRef = useRef<(m: string) => void>(() => {});
+
   // Boot
   useEffect(() => {
     let p = 0;
@@ -99,25 +118,175 @@ export default function DonaldOrb() {
       );
       transitionTo("speaking");
       setPhraseText(text);
+      // After Donald finishes speaking: go idle, and if we're in a live voice
+      // conversation, start listening again for the next thing you say.
+      const done = () => {
+        transitionTo("idle");
+        if (awakeRef.current) { noSpeechRef.current = 0; wantListenRef.current(); }
+      };
       if (voiceEv) {
         const audio = new Audio(`data:${voiceEv.mime || "audio/mpeg"};base64,${voiceEv.audio_b64}`);
         audioRef.current = audio;
-        audio.onended = () => transitionTo("idle");
-        audio.onerror = () => transitionTo("idle");
-        audio.play().catch(() => transitionTo("idle"));
+        audio.onended = done;
+        audio.onerror = done;
+        audio.play().catch(done);
       } else {
-        // No voice: hold "speaking" long enough to read, scaled to length.
         const dur = Math.min(15000, 2500 + text.length * 45);
-        setTimeout(() => { if (stateRef.current === "speaking") transitionTo("idle"); }, dur);
+        setTimeout(() => { if (stateRef.current === "speaking") done(); }, dur);
       }
     } catch {
       transitionTo("speaking");
       setPhraseText("Gateway's not answering, Champ — is it running on :8765?");
-      setTimeout(() => transitionTo("idle"), 4000);
+      setTimeout(() => { transitionTo("idle"); if (awakeRef.current) wantListenRef.current(); }, 4000);
     } finally {
       setSending(false);
     }
   }, [transitionTo]);
+
+  // ─── Voice: clap-to-wake + speech conversation ───────────────────────────
+  // Speak a short line in Donald's voice via the gateway's /api/voice, and run
+  // `after` once it finishes (used for the "Donald's here" wake announcement).
+  const speakLine = useCallback(async (text: string, after?: () => void) => {
+    transitionTo("speaking");
+    setPhraseText(text);
+    try {
+      const res = await fetch("/gw/api/voice", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) throw new Error("voice http " + res.status);
+      const buf = await res.arrayBuffer();
+      const audio = new Audio(URL.createObjectURL(new Blob([buf], { type: "audio/mpeg" })));
+      audioRef.current = audio;
+      audio.onended = () => after?.();
+      audio.onerror = () => after?.();
+      await audio.play().catch(() => after?.());
+    } catch {
+      setTimeout(() => after?.(), 800);
+    }
+  }, [transitionTo]);
+
+  const goDormant = useCallback(() => {
+    awakeRef.current = false;
+    listeningRef.current = false;
+    try { recognitionRef.current?.stop(); } catch {}
+    transitionTo("idle");
+    setPhraseText("");
+    setVoiceMsg("Dormant — clap loudly to wake Donald 👏");
+  }, [transitionTo]);
+
+  const startListening = useCallback(() => {
+    const rec = recognitionRef.current;
+    if (!rec || !awakeRef.current) return;
+    gotSpeechRef.current = false;
+    listeningRef.current = true;
+    transitionTo("listening");
+    setVoiceMsg("Listening… just talk");
+    try { rec.start(); } catch { /* already started */ }
+  }, [transitionTo]);
+
+  const onClap = useCallback(() => {
+    if (awakeRef.current) return;          // already awake
+    awakeRef.current = true;
+    noSpeechRef.current = 0;
+    setVoiceMsg("");
+    speakLine("Donald's here.", () => startListening());
+  }, [speakLine, startListening]);
+
+  // Keep the cross-call refs current.
+  useEffect(() => { sendRef.current = send; }, [send]);
+  useEffect(() => { wantListenRef.current = startListening; }, [startListening]);
+
+  const enableVoice = useCallback(async () => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) {
+      setVoiceMsg("Speech recognition needs Chrome — Safari won't do it reliably.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AC();
+      const src = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      src.connect(analyser);
+      analyserRef.current = analyser;
+      clapDataRef.current = new Uint8Array(analyser.fftSize);
+
+      // Speech recognition (one phrase at a time).
+      const rec = new SR();
+      rec.lang = "en-US";
+      rec.interimResults = true;
+      rec.continuous = false;
+      rec.onresult = (e: any) => {
+        let finalT = "";
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const r = e.results[i];
+          if (r.isFinal) finalT += r[0].transcript;
+          else setPhraseText(r[0].transcript);
+        }
+        if (finalT.trim()) {
+          gotSpeechRef.current = true;
+          listeningRef.current = false;
+          try { rec.stop(); } catch {}
+          sendRef.current(finalT.trim());
+        }
+      };
+      rec.onerror = (e: any) => {
+        if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+          setVoiceMsg("Mic blocked — allow microphone access and reload.");
+          goDormant();
+        }
+      };
+      rec.onend = () => {
+        // Ended without a final phrase while awake → retry, then sleep after a few.
+        if (listeningRef.current && awakeRef.current && !gotSpeechRef.current) {
+          noSpeechRef.current += 1;
+          if (noSpeechRef.current >= 3) { goDormant(); }
+          else { setTimeout(() => startListening(), 250); }
+        }
+      };
+      recognitionRef.current = rec;
+
+      // Clap detector loop: watch the mic's peak amplitude; a loud, brief spike
+      // while dormant wakes Donald.
+      const loop = () => {
+        const a = analyserRef.current, d = clapDataRef.current;
+        if (a && d) {
+          a.getByteTimeDomainData(d);
+          let peak = 0;
+          for (let i = 0; i < d.length; i++) {
+            const v = Math.abs(d[i] - 128) / 128;
+            if (v > peak) peak = v;
+          }
+          const now = Date.now();
+          if (!awakeRef.current && peak >= CLAP_THRESHOLD && now - lastClapRef.current > 1500) {
+            lastClapRef.current = now;
+            onClap();
+          }
+        }
+        clapRafRef.current = requestAnimationFrame(loop);
+      };
+      loop();
+
+      setVoiceOn(true);
+      setVoiceMsg("Dormant — clap loudly to wake Donald 👏");
+    } catch {
+      setVoiceMsg("Couldn't get the mic — check the browser's mic permission.");
+    }
+  }, [onClap, startListening, goDormant]);
+
+  // Cleanup mic/loop on unmount.
+  useEffect(() => {
+    return () => {
+      if (clapRafRef.current) cancelAnimationFrame(clapRafRef.current);
+      try { recognitionRef.current?.abort?.(); } catch {}
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
 
   // Canvas — must re-run after boot; canvas isn't mounted during the boot screen
   useEffect(() => {
@@ -431,6 +600,38 @@ export default function DonaldOrb() {
               }} />
               <span style={{ fontSize:10,letterSpacing:4,color:MED_TEXT }}>{statusText}</span>
             </div>
+          </div>
+
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position:"absolute",bottom:"12.5%",left:0,right:0,
+              display:"flex",flexDirection:"column",alignItems:"center",gap:8,zIndex:3,
+            }}
+          >
+            {!voiceOn ? (
+              <button
+                onClick={enableVoice}
+                style={{
+                  padding:"9px 18px",background:"rgba(212,160,32,0.1)",
+                  border:`1px solid rgba(212,160,32,0.5)`,borderRadius:20,
+                  color:"#ffe9b0",fontSize:12,letterSpacing:1,cursor:"pointer",
+                  fontFamily:"inherit",
+                }}
+              >
+                🎤 Enable clap-to-wake + voice
+              </button>
+            ) : (
+              <div
+                onClick={() => { if (!awakeRef.current) onClap(); }}
+                style={{
+                  fontSize:11,letterSpacing:2,color:MED_TEXT,cursor:"pointer",
+                  textAlign:"center",
+                }}
+              >
+                {voiceMsg || " "}{!awakeRef.current && " · (or click here to wake)"}
+              </div>
+            )}
           </div>
 
           <div
