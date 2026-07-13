@@ -38,27 +38,28 @@ The product is built from four modules. Everything else has been moved to
 Supporting: `security/` (auth, redaction, injection gate, audit), `config.yaml`,
 `requirements*.txt`, `tests/`.
 
-> **Agent-core status.** M0 collapsed three colliding agent packages
-> (`donald/`, `src/donald/`, `wren/`) to **one** canonical `donald/`. The other two
+> **Agent-core status — reconciled.** M0 collapsed three colliding agent packages
+> (`donald/`, `src/donald/`, `wren/`) to **one** canonical `donald/`; the other two
 > are in [`archive/`](./archive/README.md) with their best parts flagged for
 > deliberate harvest (wren's integrations → M4; src/donald's tool framework,
-> subagents, and self-knowledge → agent-core reconciliation). Test collection went
-> from 100% red (0 tests ran) to **128 passing**.
+> subagents, and self-knowledge → a later feature pass).
 >
-> **Known drift — the next milestone (agent-core reconciliation).** `donald/` is
-> itself a merge of divergent versions, so a handful of its own tests target APIs
-> that the current files no longer expose. These are pre-existing (not caused by
-> consolidation) and want a deliberate reconciliation pass, not a guess:
+> `donald/` was itself a merge of three divergent lineages. The reconciliation:
 >
-> - `test_core` / `test_proactive` expect a class `donald.agent.Agent`; `agent.py`
->   was overwritten with a functional personality loop (`respond()`).
-> - `test_tools` expects a functional `donald.tools.execute(name, args) -> (out, err)`;
->   the current `donald.tools` exposes a `Registry` / `register_all` API instead.
-> - `test_tools` / `test_memory` reference `workdir` / `home` fixtures that exist
->   nowhere in the tree — their defining conftest was lost in the merge.
+> - **Restored the `Agent` conductor** (`donald/agent.py`) — the tool-use loop over
+>   `Brain` + `Registry` that `app.py` and the tests expect. A stray personality
+>   `respond()` had overwritten it, breaking the runnable app *and* `test_core`.
+> - **Resolved the `voice.py` vs `voice/` package shadow** — the graceful-degradation
+>   speaker now lives at `donald/voice/speaker.py` and re-exports cleanly; the
+>   voice-loop's stale `Conversation` import is deferred to call time.
+> - **Archived orphan tests** (`test_config`/`test_memory`/`test_tools`) that
+>   described an alternate design (JSON `~/.donald` config, functional `execute()`
+>   tools, markdown memory) whose implementation was never merged and which
+>   conflicts with the canonical runtime `test_core` covers. Revisit if we adopt
+>   that config/tools design deliberately.
 >
-> The reconciliation decides one agent-loop API for `donald/`, restores the missing
-> fixtures, and folds in the src/donald framework where it's stronger.
+> Result: test collection went from **100% red (0 tests ran)** to **157 passing,
+> 0 failing**, and `python donald.py` builds and drives a real tool loop again.
 
 ## Design principles (from the agent core)
 

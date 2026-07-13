@@ -14,7 +14,7 @@ so `git log --follow` still works, and anything here can be restored if needed.
 | `src-donald/` | The `src/donald` tool **framework** — `BaseTool`/`ToolRegistry`, subagents, self-knowledge (self-documenting), integrations, prompt-builder | A second `donald` package that collided with the canonical one; **harvest its framework** during the agent-core reconciliation |
 | `aether-orb/` | The "aether-cosmic-interface" three.js voice orb (`index.html`, `scene.js`, `js/`, `client/`, root `package.json`) | Marketing/desktop UI now seeds from `web/` (Next.js); the three.js orb was a separate UI experiment |
 | `north-star.md` | "Drift AI" CRE north-star (Hermes/Dante/Vault) | A different product framing; the active product is Donald (`PRODUCT.md`) |
-| `tests/`, `tests-unit/` | Tests belonging to the modules above | Moved with their code so the active suite stays coherent |
+| `tests/`, `tests-unit/` | Tests belonging to the modules above, plus orphan tests (`test_config`, `test_memory`, `test_tools`) that describe an alternate `donald` design (JSON `~/.donald` config, functional `execute()` tools, markdown memory) whose implementation was never merged | Moved with their code so the active suite stays coherent; revisit the orphans only if we adopt that design |
 
 The active product spine is: `donald/` (agent core) · `orchestrator/` (routing/tier
 framework) · `gateway/` (model-agnostic streaming server) · `web/` (UI seed).
