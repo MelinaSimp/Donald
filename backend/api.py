@@ -13,9 +13,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 
+from security.auth_ratelimit import AuthRateLimiter, client_ip
 from security.bearer_auth import extract_bearer
 
 from .crypto import TokenCipher
@@ -43,15 +44,31 @@ class TokenBody(BaseModel):
     secret: dict[str, Any] = Field(description="Provider token payload to encrypt")
 
 
-def create_app(db: DB | None = None, cipher: TokenCipher | None = None) -> FastAPI:
+def create_app(
+    db: DB | None = None,
+    cipher: TokenCipher | None = None,
+    rate_limiter: AuthRateLimiter | None = None,
+) -> FastAPI:
     db = db or open_db()
     cipher = cipher or TokenCipher()
+    limiter = rate_limiter or AuthRateLimiter()
     users = UserRepo(db)
     sessions = SessionRepo(db)
     tokens = TokenRepo(db, cipher)
     runs = RunRepo(db)
 
     app = FastAPI(title="Donald Backend", version="0.1.0")
+
+    def guard_auth_rate(request: Request) -> str:
+        """Per-IP brute-force guard for the auth endpoints. Returns the ip."""
+        ip = client_ip(dict(request.headers), request.client.host if request.client else "?")
+        allowed, retry_after = limiter.check(ip)
+        if not allowed:
+            raise HTTPException(
+                status_code=429, detail="too many attempts",
+                headers={"Retry-After": str(int(retry_after))},
+            )
+        return ip
 
     def current_user(authorization: str | None = Header(default=None)) -> User:
         token = extract_bearer(authorization)
@@ -70,7 +87,8 @@ def create_app(db: DB | None = None, cipher: TokenCipher | None = None) -> FastA
 
     # ── auth ──────────────────────────────────────────────────────────────────
     @app.post("/auth/signup")
-    def signup(body: SignupBody) -> dict:
+    def signup(body: SignupBody, request: Request) -> dict:
+        guard_auth_rate(request)
         if not body.accept_tos:
             raise HTTPException(status_code=400, detail="must accept terms of service")
         try:
@@ -85,9 +103,11 @@ def create_app(db: DB | None = None, cipher: TokenCipher | None = None) -> FastA
         return {"token": token, "user": user.public()}
 
     @app.post("/auth/login")
-    def login(body: LoginBody) -> dict:
+    def login(body: LoginBody, request: Request) -> dict:
+        ip = guard_auth_rate(request)
         user = users.check_password(body.email, body.password)
         if not user:
+            limiter.record_fail(ip)  # only failures count toward lockout
             raise HTTPException(status_code=401, detail="invalid credentials")
         token = sessions.issue(user.id)
         return {"token": token, "user": user.public()}
