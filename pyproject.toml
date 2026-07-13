@@ -19,7 +19,8 @@ dependencies = [
 agent = ["anthropic>=0.40"]
 images = ["google-genai>=0.3"]
 serving = ["fastapi>=0.110", "uvicorn>=0.29"]
-dev = ["pytest>=8.0"]
+# pytest-asyncio is needed by the sibling `trillion` suite that also lives in tests/.
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
 
 [project.scripts]
 prism = "prism.cli:main"
@@ -30,3 +31,6 @@ packages = ["prism"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# src/ on the path + asyncio auto so the sibling `trillion` tests collect & run.
+pythonpath = ["src"]
+asyncio_mode = "auto"

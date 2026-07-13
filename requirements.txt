@@ -3,6 +3,7 @@
 # if a kwarg is rejected.
 anthropic>=0.70
 pytest>=8.0.0
+pytest-asyncio>=0.23   # sibling `trillion` async tests
 
 # Prism (head-of-design agent) core:
 pyyaml>=6.0
