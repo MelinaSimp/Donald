@@ -18,7 +18,9 @@ Stripped of marketing, Donald is four systems that talk to each other:
 3. **Agent runtime** — the LLM loop that plans, calls tools, and produces answers.
    **This is the most complete part of the product.**
 4. **Memory layer** — what makes the agent feel like it remembers and adapts.
-   *(Fact-store tier only today — roadmap M2.)*
+   *(Three tiers landed — profile facts, semantic RAG chunks, episodic summaries —
+   per-user, injected into each turn; see `backend/memory.py`. Real embedding
+   provider and background summarizer are the remaining upgrades.)*
 
 Integrations (Google, Slack, GitHub, Stripe, n8n, …) are tooling hung off the
 agent runtime. The agent + memory are the depth; integrations are the breadth.
@@ -33,7 +35,7 @@ The product is built from four modules. Everything else has been moved to
 | `donald/` | The agent core — agent loop, brain, memory, safety, voice, proactive daemon, personality. The brand-runnable app (`python donald.py`). |
 | `orchestrator/` | Routing + the six-tier framework: smart dispatch, least-privilege tool scoping, failure isolation, confirmation gates, handoffs, hot-reload. |
 | `gateway/` | The model-agnostic HTTP/WebSocket server — one endpoint the UI talks to; streams agent events; swappable model connectors (Anthropic, OpenAI-compatible, voice). |
-| `backend/` | **M1** product API — accounts, auth (bearer sessions), per-user **encrypted** integration tokens, run history. Multi-tenant by construction; SQLite for dev/tests, Postgres in prod. See [`backend/README.md`](./backend/README.md). |
+| `backend/` | **M1** product API — accounts, auth (bearer sessions), per-user **encrypted** integration tokens, run history — plus the **M2** memory engine (`memory.py`, `embeddings.py`): per-user 3-tier semantic memory. Multi-tenant by construction; SQLite for dev/tests, Postgres in prod. See [`backend/README.md`](./backend/README.md). |
 | `web/` | Next.js UI — the seed for the marketing site and the desktop shell's renderer. |
 
 Supporting: `security/` (auth, redaction, injection gate, audit), `config.yaml`,
@@ -77,12 +79,14 @@ Supporting: `security/` (auth, redaction, injection gate, audit), `config.yaml`,
 
 ## Current honest state
 
-Agent depth ≈ 80% · product shell: M0 (consolidation) and the agent-core
-reconciliation are done, and **M1's backend foundation has landed** — multi-tenant
-accounts, bearer auth, and encrypted per-user integration tokens, verified on both
-SQLite and Postgres. Still ahead: wiring runs into the agent loop, the desktop
-shell (M3), the OAuth broker (M4), semantic memory (M2), billing (M5), and signing
-(M6). The roadmap sequences that work into seven milestones (M0–M7).
+Agent depth ≈ 80%. Product shell: **M0** (consolidation) + agent-core
+reconciliation done; **M1** landed — multi-tenant accounts, bearer auth, encrypted
+per-user integration tokens, and an authenticated gateway that scopes and records
+each chat per user; **M2** landed — per-user 3-tier semantic memory injected into
+each turn. Both verified on SQLite and live Postgres. Still ahead: the desktop
+shell (M3), the OAuth broker (M4), billing (M5), and signing (M6) — plus two M2
+upgrades (a real embedding provider and a background summarizer). The roadmap
+sequences the rest across M0–M7.
 
 ## Integration strategy
 

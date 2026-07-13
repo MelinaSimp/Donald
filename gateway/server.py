@@ -104,13 +104,17 @@ def build_orchestrator(settings: Settings) -> DonaldOrchestrator:
     )
 
 
-def add_gateway_routes(app, orch: DonaldOrchestrator, settings: Settings, auth=None):
+def add_gateway_routes(
+    app, orch: DonaldOrchestrator, settings: Settings, auth=None, memory=None
+):
     """Attach the chat/voice/ws routes to ``app``.
 
     Factored out so the standalone gateway (``create_app``) and the combined
     product server (``serve.py``, which mounts these onto the backend app) share
     one implementation. ``auth``, when present, gates /api/chat and /ws behind a
-    bearer token and records each turn as a per-user agent run.
+    bearer token and records each turn as a per-user agent run. ``memory``, when
+    present, injects the user's remembered context into each turn and persists
+    the exchange afterward (requires ``auth`` for the user_id).
     """
     _require_fastapi()
     sessions: Dict[str, Session] = {}
@@ -141,7 +145,12 @@ def add_gateway_routes(app, orch: DonaldOrchestrator, settings: Settings, auth=N
         # Namespacing by user keeps two tenants from sharing a conversation.
         key = f"{user_id}:{session_id}" if user_id else session_id
         run_id = auth.start_run(user_id) if (auth and user_id) else None
-        reply = await orch.run(get_session(key), message)
+        sess = get_session(key)
+        if memory and user_id:
+            sess.memory_context = memory.context_block(user_id, message)
+        reply = await orch.run(sess, message)
+        if memory and user_id:
+            memory.remember(user_id, message, reply.text, run_id)
         if run_id:
             auth.finish_run(user_id, run_id, reply.text[:280])
         return {"text": reply.text, "events": reply.events}
@@ -197,11 +206,16 @@ def add_gateway_routes(app, orch: DonaldOrchestrator, settings: Settings, auth=N
                     continue
                 key = f"{user_id}:{session_id}" if user_id else session_id
                 run_id = auth.start_run(user_id) if (auth and user_id) else None
+                sess = get_session(key)
+                if memory and user_id:
+                    sess.memory_context = memory.context_block(user_id, message)
                 final_text = ""
-                async for event in orch.run_events(get_session(key), message):
+                async for event in orch.run_events(sess, message):
                     if event.get("type") == "final":
                         final_text = str(event.get("text") or "")
                     await websocket.send_json(event)
+                if memory and user_id:
+                    memory.remember(user_id, message, final_text, run_id)
                 if run_id:
                     auth.finish_run(user_id, run_id, final_text[:280])
         except WebSocketDisconnect:

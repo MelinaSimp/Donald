@@ -74,6 +74,9 @@ class Session:
 
     session_id: str
     conv: ConversationManager = field(default_factory=ConversationManager)
+    # Per-turn memory context (profile facts + retrieved chunks) injected into
+    # the system prompt. Set by the caller before run(); empty = no memory.
+    memory_context: str = ""
 
 
 @dataclass
@@ -168,6 +171,8 @@ class DonaldOrchestrator:
         messages = session.conv.messages_for_api()
         append_voice_cue(messages)  # API-only; never stored
         system = build_system_prompt(self.personality)
+        if session.memory_context:
+            system = f"{system}\n\n{session.memory_context}"
         return await self.llm.messages.create(
             model=self.settings.donald_model,
             system=system,

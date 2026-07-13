@@ -22,6 +22,7 @@ def create_app():
     from backend.api import create_app as create_backend_app
     from backend.db import open_db
     from backend.gateway_auth import GatewayAuth
+    from backend.memory_service import MemoryService
     from gateway.config import load_settings
     from gateway.server import add_gateway_routes, build_orchestrator
 
@@ -30,7 +31,9 @@ def create_app():
 
     settings = load_settings()
     orch = build_orchestrator(settings)
-    add_gateway_routes(app, orch, settings, auth=GatewayAuth(db))
+    add_gateway_routes(
+        app, orch, settings, auth=GatewayAuth(db), memory=MemoryService(db)
+    )
     return app
 
 

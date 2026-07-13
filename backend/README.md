@@ -66,6 +66,27 @@ Auth is a browser/desktop-friendly opaque bearer token: `Authorization: Bearer <
 | `repo.py` | `UserRepo` / `SessionRepo` / `TokenRepo` / `RunRepo` (the isolation boundary) |
 | `api.py` | FastAPI app + `current_user` bearer dependency |
 
+## Memory (M2)
+
+Per-user semantic memory, in `memory.py` / `embeddings.py` / `memory_service.py`
+(schema: `migrations/002_memory.sql`). Three tiers in one `memory_items` table:
+
+- **facts** — durable profile ("prefers concise answers").
+- **chunks** — embedded pieces of past conversations (RAG corpus).
+- **episodes** — post-session summaries.
+
+Each turn, the gateway injects `MemoryService.context_block(user_id, message)`
+(profile + top-K relevant items) into the system prompt, then `remember(...)`
+persists the exchange. Embeddings are stored as JSON and ranked by cosine in
+Python over the user's (bounded) items — portable across SQLite/Postgres; see the
+pgvector upgrade path noted in the migration.
+
+The default `HashingEmbedder` is **lexical** and dependency-free (great for
+dev/tests). For conceptual recall, plug a learned provider (Voyage/OpenAI/local)
+that implements the `Embedder` protocol — nothing else changes. Fact extraction
+is currently a first-person heuristic; the model-backed extractor + episodic
+summarizer (running off a queue) are the planned upgrades.
+
 ## Next (not yet here)
 
 - Wire `RunRepo` into the gateway's agent loop so runs are recorded per user.
