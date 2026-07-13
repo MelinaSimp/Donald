@@ -38,12 +38,27 @@ The product is built from four modules. Everything else has been moved to
 Supporting: `security/` (auth, redaction, injection gate, audit), `config.yaml`,
 `requirements*.txt`, `tests/`.
 
-> **Agent-core unification (in progress).** The tree currently carries more than
-> one agent implementation (`donald/`, `src/donald/`, `wren/`) left over from a
-> branch merge — they all try to import as `donald`, which is why the test suite
-> is red at collection. M0 collapses these to **one** canonical `donald` package.
-> Until that lands, treat `donald/` as canonical and the others as being folded in
-> or retired. See the roadmap's M0 section.
+> **Agent-core status.** M0 collapsed three colliding agent packages
+> (`donald/`, `src/donald/`, `wren/`) to **one** canonical `donald/`. The other two
+> are in [`archive/`](./archive/README.md) with their best parts flagged for
+> deliberate harvest (wren's integrations → M4; src/donald's tool framework,
+> subagents, and self-knowledge → agent-core reconciliation). Test collection went
+> from 100% red (0 tests ran) to **128 passing**.
+>
+> **Known drift — the next milestone (agent-core reconciliation).** `donald/` is
+> itself a merge of divergent versions, so a handful of its own tests target APIs
+> that the current files no longer expose. These are pre-existing (not caused by
+> consolidation) and want a deliberate reconciliation pass, not a guess:
+>
+> - `test_core` / `test_proactive` expect a class `donald.agent.Agent`; `agent.py`
+>   was overwritten with a functional personality loop (`respond()`).
+> - `test_tools` expects a functional `donald.tools.execute(name, args) -> (out, err)`;
+>   the current `donald.tools` exposes a `Registry` / `register_all` API instead.
+> - `test_tools` / `test_memory` reference `workdir` / `home` fixtures that exist
+>   nowhere in the tree — their defining conftest was lost in the merge.
+>
+> The reconciliation decides one agent-loop API for `donald/`, restores the missing
+> fixtures, and folds in the src/donald framework where it's stronger.
 
 ## Design principles (from the agent core)
 
