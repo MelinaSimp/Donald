@@ -9,10 +9,14 @@ pyyaml>=6.0
 # Prism optional live integrations (install as needed):
 # google-genai>=0.3   # Tier 5 images (needs GEMINI_API_KEY + billing)
 
-# Donald gateway (connects Donald -> Hermes + voice; see gateway/README.md):
+# Donald gateway (connects Donald -> Hermes + voice; see gateway/README.md)
+# AND the backend product API (accounts/auth/tokens; see backend/README.md):
 httpx>=0.27       # Hermes (OpenAI-compatible) + ElevenLabs HTTP clients
-fastapi>=0.110    # the REST + WebSocket server your UI talks to
-uvicorn>=0.29     # ASGI server that runs the gateway
+fastapi>=0.110    # REST + WebSocket server the UI talks to (gateway + backend)
+uvicorn>=0.29     # ASGI server
+cryptography>=41  # backend: Fernet at-rest encryption of integration tokens
+email-validator>=2.0  # backend: signup email validation (FastAPI EmailStr)
+# psycopg[binary]>=3.1  # backend: only needed when DATABASE_URL is Postgres
 # fastapi>=0.110      # serve mockups
 # uvicorn>=0.29
 

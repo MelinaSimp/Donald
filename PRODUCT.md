@@ -33,6 +33,7 @@ The product is built from four modules. Everything else has been moved to
 | `donald/` | The agent core — agent loop, brain, memory, safety, voice, proactive daemon, personality. The brand-runnable app (`python donald.py`). |
 | `orchestrator/` | Routing + the six-tier framework: smart dispatch, least-privilege tool scoping, failure isolation, confirmation gates, handoffs, hot-reload. |
 | `gateway/` | The model-agnostic HTTP/WebSocket server — one endpoint the UI talks to; streams agent events; swappable model connectors (Anthropic, OpenAI-compatible, voice). |
+| `backend/` | **M1** product API — accounts, auth (bearer sessions), per-user **encrypted** integration tokens, run history. Multi-tenant by construction; SQLite for dev/tests, Postgres in prod. See [`backend/README.md`](./backend/README.md). |
 | `web/` | Next.js UI — the seed for the marketing site and the desktop shell's renderer. |
 
 Supporting: `security/` (auth, redaction, injection gate, audit), `config.yaml`,
@@ -76,9 +77,12 @@ Supporting: `security/` (auth, redaction, injection gate, audit), `config.yaml`,
 
 ## Current honest state
 
-Agent depth ≈ 80% · product shell ≈ 15%. A single-user local demo is essentially
-here; a distributable, multi-tenant, signed, billed product is the work ahead. The
-roadmap sequences that work into seven milestones (M0–M7).
+Agent depth ≈ 80% · product shell: M0 (consolidation) and the agent-core
+reconciliation are done, and **M1's backend foundation has landed** — multi-tenant
+accounts, bearer auth, and encrypted per-user integration tokens, verified on both
+SQLite and Postgres. Still ahead: wiring runs into the agent loop, the desktop
+shell (M3), the OAuth broker (M4), semantic memory (M2), billing (M5), and signing
+(M6). The roadmap sequences that work into seven milestones (M0–M7).
 
 ## Integration strategy
 
