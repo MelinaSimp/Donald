@@ -122,15 +122,21 @@ class MemoryStore:
         if not rows:
             return []
         q = self.embedder.embed(query)
-        hits = [
-            MemoryHit(
-                id=r["id"], kind=r["kind"], content=r["content"],
-                category=r["category"], source=r["source"],
-                score=cosine(q, json.loads(r["embedding"])),
-                created_at=r["created_at"],
+        hits = []
+        for r in rows:
+            emb = json.loads(r["embedding"])
+            if len(emb) != len(q):
+                # Written by a different embedder (dimension mismatch): can't be
+                # compared meaningfully, so skip rather than mis-rank. Re-embed
+                # to bring these back into play after an embedder switch.
+                continue
+            hits.append(
+                MemoryHit(
+                    id=r["id"], kind=r["kind"], content=r["content"],
+                    category=r["category"], source=r["source"],
+                    score=cosine(q, emb), created_at=r["created_at"],
+                )
             )
-            for r in rows
-        ]
         # Rank by similarity, breaking ties toward more recent items.
         hits.sort(key=lambda h: (h.score, h.created_at), reverse=True)
         return [h for h in hits[:k] if h.score > 0.0]

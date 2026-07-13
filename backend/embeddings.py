@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import hashlib
 import math
+import os
 import re
-from typing import Protocol, Sequence, runtime_checkable
+from typing import Any, Protocol, Sequence, runtime_checkable
 
 _WORD = re.compile(r"[a-z0-9']+")
 
@@ -65,3 +66,78 @@ class HashingEmbedder:
 
     def embed_batch(self, texts: Sequence[str]) -> list[list[float]]:
         return [self.embed(t) for t in texts]
+
+
+class RemoteEmbedder:
+    """A learned embedder behind an OpenAI-compatible ``/embeddings`` endpoint.
+
+    Works with OpenAI, Voyage's OpenAI-compatible route, or a local server —
+    anything that accepts ``{"model", "input"}`` and returns
+    ``{"data": [{"embedding": [...]}]}``. The HTTP client is injectable so tests
+    never touch the network.
+    """
+
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str | None = None,
+        model: str = "text-embedding-3-small",
+        dim: int = 1536,
+        http: Any | None = None,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.model = model
+        self.dim = dim
+        self._http = http  # inject a fake in tests; else lazily create httpx
+
+    def _client(self):
+        if self._http is None:
+            import httpx
+
+            self._http = httpx.Client(timeout=30.0)
+        return self._http
+
+    def _post(self, inputs: list[str]) -> list[list[float]]:
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        resp = self._client().post(
+            f"{self.base_url}/embeddings",
+            headers=headers,
+            json={"model": self.model, "input": inputs},
+        )
+        if getattr(resp, "status_code", 200) >= 400:
+            raise RuntimeError(f"embeddings endpoint returned {resp.status_code}")
+        data = resp.json()["data"]
+        return [row["embedding"] for row in data]
+
+    def embed(self, text: str) -> list[float]:
+        return self._post([text])[0]
+
+    def embed_batch(self, texts: Sequence[str]) -> list[list[float]]:
+        return self._post(list(texts))
+
+
+def get_embedder() -> Embedder:
+    """Pick the embedder from the environment.
+
+    ``EMBEDDINGS_PROVIDER=remote`` uses ``RemoteEmbedder`` (needs
+    ``EMBEDDINGS_BASE_URL``; optional ``EMBEDDINGS_API_KEY`` / ``_MODEL`` /
+    ``_DIM``). Anything else (the default) uses the offline ``HashingEmbedder``.
+
+    Embeddings are tied to the embedder that wrote them — switching providers
+    means re-embedding existing memory. The store guards against mixing by
+    skipping vectors whose dimension differs from the current query.
+    """
+    if os.getenv("EMBEDDINGS_PROVIDER", "hashing").lower() == "remote":
+        base = os.getenv("EMBEDDINGS_BASE_URL")
+        if not base:
+            raise RuntimeError("EMBEDDINGS_PROVIDER=remote needs EMBEDDINGS_BASE_URL")
+        return RemoteEmbedder(
+            base_url=base,
+            api_key=os.getenv("EMBEDDINGS_API_KEY"),
+            model=os.getenv("EMBEDDINGS_MODEL", "text-embedding-3-small"),
+            dim=int(os.getenv("EMBEDDINGS_DIM", "1536")),
+        )
+    return HashingEmbedder(dim=int(os.getenv("EMBEDDINGS_DIM", "256")))

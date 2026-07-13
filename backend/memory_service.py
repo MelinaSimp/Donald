@@ -16,10 +16,12 @@ class changes. Kept model-free so it runs and tests without an API key.
 from __future__ import annotations
 
 import re
+from typing import Callable, Optional
 
 from .db import DB
-from .embeddings import Embedder
+from .embeddings import Embedder, get_embedder
 from .memory import MemoryStore
+from .summarize import summarize_session
 
 # First-person cues that usually introduce a durable fact worth keeping.
 _FACT_CUES = re.compile(
@@ -31,7 +33,9 @@ _FACT_CUES = re.compile(
 
 class MemoryService:
     def __init__(self, db: DB, embedder: Embedder | None = None) -> None:
-        self.store = MemoryStore(db, embedder)
+        # Default to the env-selected embedder (offline hashing unless a remote
+        # provider is configured) so prod gets learned embeddings for free.
+        self.store = MemoryStore(db, embedder or get_embedder())
 
     def context_block(self, user_id: str, message: str) -> str:
         return self.store.context_block(user_id, query=message)
@@ -49,6 +53,26 @@ class MemoryService:
         fact = self._extract_fact(user_msg)
         if fact:
             self.store.add_fact(user_id, fact)
+
+    def summarize_session(
+        self,
+        user_id: str,
+        transcript: list[dict],
+        run_id: str | None = None,
+        llm: Optional[Callable[[str], str]] = None,
+    ) -> str:
+        """Post-session job: extract durable facts + write an episodic summary.
+
+        Model-backed when ``llm`` is supplied, otherwise a heuristic. Returns the
+        episode summary (empty if the transcript yielded nothing). Intended to be
+        called from a background queue when a session ends.
+        """
+        facts, summary = summarize_session(transcript, llm=llm)
+        for fact in facts:
+            self.store.add_fact(user_id, fact)
+        if summary:
+            self.store.add_episode(user_id, summary, run_id=run_id)
+        return summary
 
     @staticmethod
     def _extract_fact(text: str) -> str | None:
