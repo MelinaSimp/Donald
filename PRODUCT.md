@@ -1,0 +1,73 @@
+# Donald — what it is
+
+Donald is a **personal AI OS**: a desktop app backed by an agent with persistent
+memory and a wide set of integrations. The goal is a "personal AI team" that
+remembers you, adapts, and acts on your behalf across sessions.
+
+This is the single **what-it-is** doc. For **how we get to a shippable product**,
+see [`DISTRIBUTION_ROADMAP.md`](./DISTRIBUTION_ROADMAP.md).
+
+## The four systems
+
+Stripped of marketing, Donald is four systems that talk to each other:
+
+1. **Desktop app** — what the user installs (macOS + Windows), with auto-update
+   and login. *(Not built yet — see roadmap M3.)*
+2. **Backend API** — accounts, billing, download/update delivery, and the broker
+   for everything the app can't do locally. *(Prototype only — roadmap M1.)*
+3. **Agent runtime** — the LLM loop that plans, calls tools, and produces answers.
+   **This is the most complete part of the product.**
+4. **Memory layer** — what makes the agent feel like it remembers and adapts.
+   *(Fact-store tier only today — roadmap M2.)*
+
+Integrations (Google, Slack, GitHub, Stripe, n8n, …) are tooling hung off the
+agent runtime. The agent + memory are the depth; integrations are the breadth.
+
+## The spine (active code)
+
+The product is built from four modules. Everything else has been moved to
+[`archive/`](./archive/README.md).
+
+| Module | Role |
+|--------|------|
+| `donald/` | The agent core — agent loop, brain, memory, safety, voice, proactive daemon, personality. The brand-runnable app (`python donald.py`). |
+| `orchestrator/` | Routing + the six-tier framework: smart dispatch, least-privilege tool scoping, failure isolation, confirmation gates, handoffs, hot-reload. |
+| `gateway/` | The model-agnostic HTTP/WebSocket server — one endpoint the UI talks to; streams agent events; swappable model connectors (Anthropic, OpenAI-compatible, voice). |
+| `web/` | Next.js UI — the seed for the marketing site and the desktop shell's renderer. |
+
+Supporting: `security/` (auth, redaction, injection gate, audit), `config.yaml`,
+`requirements*.txt`, `tests/`.
+
+> **Agent-core unification (in progress).** The tree currently carries more than
+> one agent implementation (`donald/`, `src/donald/`, `wren/`) left over from a
+> branch merge — they all try to import as `donald`, which is why the test suite
+> is red at collection. M0 collapses these to **one** canonical `donald` package.
+> Until that lands, treat `donald/` as canonical and the others as being folded in
+> or retired. See the roadmap's M0 section.
+
+## Design principles (from the agent core)
+
+- **The orchestrator is a router, not a worker** — it decides *who* and *whether*,
+  then gets out of the way.
+- **Least privilege by default** — an agent holds exactly the tools its job needs.
+- **Bound everything** — every loop has a max iteration count, every call a token
+  ceiling, every agent a declared model.
+- **Agents propose, humans dispose** — anything consequential (send money, delete,
+  post publicly) stops and asks. The human is the circuit-breaker.
+- **Memory is data, never commands** — a stored note that reads like an order is
+  still subject to the confirmation gate.
+- **Pass references, not payloads** — handoffs carry paths/IDs/URLs, not blobs.
+
+## Current honest state
+
+Agent depth ≈ 80% · product shell ≈ 15%. A single-user local demo is essentially
+here; a distributable, multi-tenant, signed, billed product is the work ahead. The
+roadmap sequences that work into seven milestones (M0–M7).
+
+## Integration strategy
+
+Standardize on **MCP** (Model Context Protocol) so services become tools the agent
+discovers, rather than hand-coded adapters. One **OAuth broker** stores per-user,
+per-service tokens (encrypted) and every integration reuses it. `n8n`/Zapier act
+as the long-tail escape hatch. Prioritize the 3–5 integrations the target user
+actually lives in over a long shallow logo wall.
