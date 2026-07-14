@@ -66,6 +66,30 @@ Supporting: `security/` (auth, redaction, injection gate, audit), `config.yaml`,
 > Result: test collection went from **100% red (0 tests ran)** to **157 passing,
 > 0 failing**, and `python donald.py` builds and drives a real tool loop again.
 
+## How Donald acts — brain, local power, cloud reach
+
+Donald (Claude) is the reasoning brain. It doesn't act blindly; it has two ways
+to *do* things, and it picks the right one:
+
+1. **Hermes — the local power tool.** One delegation tool, `hermes_execute`,
+   hands a task to the Hermes agent running on the user's machine, which has its
+   full toolset (terminal, files, web, skills). This is for open-ended, heavy, or
+   local work. Hermes' output comes back wrapped in an `<untrusted_hermes>`
+   envelope and is scanned for injection before Claude sees it.
+2. **Connected integrations — cloud reach.** Per-user, first-class tools for the
+   accounts the user linked via the OAuth broker (M4): `list_connected_integrations`,
+   `github_list_repos`, `gmail_search`, `github_create_issue`, … Each runs
+   server-side with that user's stored, auto-refreshed token
+   (`backend/agent_tools.py`). Read tools run freely; **consequential** tools
+   (write/send) stop for an explicit human yes, and provider text (emails, issue
+   bodies) is injection-gated just like Hermes output.
+
+So the full loop is **reason (Claude) → delegate heavy/local work (Hermes) or act
+on cloud accounts (integration tools), always gated on anything irreversible.**
+`GET /agent/tools` shows the live capability set and which integrations are ready.
+Adding a capability is a spec entry in `agent_tools.py` (schema + handler) or a
+new MCP server — the surface grows without touching the loop.
+
 ## Design principles (from the agent core)
 
 - **The orchestrator is a router, not a worker** — it decides *who* and *whether*,

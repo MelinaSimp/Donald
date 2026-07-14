@@ -76,6 +76,43 @@ class ProviderAPI:
             raise ProviderError(f"{provider} API returned {resp.status_code}")
         return cfg.parse(resp.json())
 
+    def github_list_repos(self, user_id: str, limit: int = 20) -> list[dict]:
+        """The user's most-recently-updated GitHub repos (read-only)."""
+        access = self._access(user_id, "github")
+        if not access:
+            raise ProviderError("github is not connected")
+        resp = self._client().get(
+            f"https://api.github.com/user/repos?per_page={limit}&sort=updated",
+            headers={"Authorization": f"Bearer {access}", "Accept": "application/vnd.github+json"},
+        )
+        if getattr(resp, "status_code", 200) >= 400:
+            raise ProviderError(f"github API returned {resp.status_code}")
+        return [{"full_name": r.get("full_name"), "private": r.get("private"),
+                 "url": r.get("html_url")} for r in resp.json()]
+
+    def gmail_search(self, user_id: str, query: str, limit: int = 10) -> list[dict]:
+        """Search the user's Gmail (read-only); returns message id/snippet."""
+        access = self._access(user_id, "google")
+        if not access:
+            raise ProviderError("google is not connected")
+        c = self._client()
+        listed = c.get(
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages"
+            f"?maxResults={limit}&q={query}",
+            headers={"Authorization": f"Bearer {access}"},
+        )
+        if getattr(listed, "status_code", 200) >= 400:
+            raise ProviderError(f"gmail API returned {listed.status_code}")
+        out = []
+        for m in (listed.json().get("messages") or [])[:limit]:
+            msg = c.get(
+                f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{m['id']}?format=metadata",
+                headers={"Authorization": f"Bearer {access}"},
+            )
+            body = msg.json() if getattr(msg, "status_code", 200) < 400 else {}
+            out.append({"id": m["id"], "snippet": body.get("snippet", "")})
+        return out
+
     def create_github_issue(
         self, user_id: str, repo: str, title: str, body: str = "", *, confirm: bool = False
     ) -> dict:

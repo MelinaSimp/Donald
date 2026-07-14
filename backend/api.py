@@ -52,6 +52,17 @@ class TokenBody(BaseModel):
     secret: dict[str, Any] = Field(description="Provider token payload to encrypt")
 
 
+def _tool_ready(tool_name: str, connected: set[str]) -> bool:
+    """A tool is usable once its provider is connected (or it needs no provider)."""
+    if tool_name.startswith("github"):
+        return "github" in connected
+    if tool_name.startswith("gmail") or tool_name.startswith("google"):
+        return "google" in connected
+    if tool_name.startswith("slack"):
+        return "slack" in connected
+    return True  # list_connected_integrations etc.
+
+
 class FactBody(BaseModel):
     content: str = Field(min_length=1, max_length=500)
 
@@ -257,6 +268,25 @@ def create_app(
         except BillingError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
         return {"received": True, "type": event_type}
+
+    # ── Donald's capabilities: Hermes + the connected-integration tools ──────
+    @app.get("/agent/tools")
+    def agent_tools(user: User = Depends(current_user)) -> dict:
+        from .agent_tools import TOOL_SPECS
+        connected = set(tokens.providers(user.id))
+        return {
+            "hermes": {
+                "name": "hermes_execute",
+                "description": "Delegate heavy local work (terminal, files, web, skills) to the Hermes agent.",
+            },
+            "integrations": [
+                {"name": s["name"], "description": s["description"],
+                 "consequential": s["consequential"],
+                 # a tool is 'ready' if its provider is connected (or it needs none)
+                 "ready": _tool_ready(s["name"], connected)}
+                for s in TOOL_SPECS
+            ],
+        }
 
     # ── memory (M2): what Donald remembers, visible + editable ───────────────
     @app.get("/memory")

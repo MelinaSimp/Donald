@@ -105,7 +105,8 @@ def build_orchestrator(settings: Settings) -> DonaldOrchestrator:
 
 
 def add_gateway_routes(
-    app, orch: DonaldOrchestrator, settings: Settings, auth=None, memory=None
+    app, orch: DonaldOrchestrator, settings: Settings, auth=None, memory=None,
+    integrations=None,
 ):
     """Attach the chat/voice/ws routes to ``app``.
 
@@ -148,6 +149,8 @@ def add_gateway_routes(
         sess = get_session(key)
         if memory and user_id:
             sess.memory_context = memory.context_block(user_id, message)
+        if integrations and user_id:
+            sess.tools = integrations(user_id)   # per-user connected-account tools
         reply = await orch.run(sess, message)
         if memory and user_id:
             memory.remember(user_id, message, reply.text, run_id)
@@ -209,6 +212,8 @@ def add_gateway_routes(
                 sess = get_session(key)
                 if memory and user_id:
                     sess.memory_context = memory.context_block(user_id, message)
+                if integrations and user_id:
+                    sess.tools = integrations(user_id)
                 final_text = ""
                 async for event in orch.run_events(sess, message):
                     if event.get("type") == "final":
