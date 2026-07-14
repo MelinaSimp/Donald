@@ -42,7 +42,7 @@
     <header class="topbar">
       <div class="lights"><i class="r"></i><i></i><i></i></div>
       <div class="brand">DONALD_OS<span class="tm">™</span><span class="devpill">DEV ▾</span></div>
-      <button class="voicepill"><span class="mic"></span> VOICE</button>
+      <button id="voice" class="voicepill"><span class="mic"></span> VOICE</button>
       <div class="topright">
         <button id="plan" class="planpill hidden"></button>
         <span class="statuspill">CALM</span>
@@ -68,6 +68,11 @@
         <div class="panel agenda">
           <div class="agenda-head">TODAY</div>
           <ul id="agenda" class="agenda-list"><li class="muted">No activity yet</li></ul>
+        </div>
+
+        <div class="panel memory">
+          <div class="agenda-head"><span class="brain">◈</span> WHAT DONALD REMEMBERS</div>
+          <ul id="memory" class="mem-list"><li class="muted">Tell Donald something about you →</li></ul>
         </div>
 
         <div class="panel integrations">
@@ -118,6 +123,25 @@
     </div>
 
     <button id="logout" class="logout">Log out</button>
+
+    <!-- confirmation gate for consequential actions -->
+    <div id="confirm-overlay" class="overlay hidden">
+      <div class="modal">
+        <h3>Confirm action</h3>
+        <p class="modal-sub">Donald won't do anything irreversible without a yes.</p>
+        <div id="issue-form">
+          <label>Repository<input id="issue-repo" type="text" placeholder="owner/name" /></label>
+          <label>Issue title<input id="issue-title" type="text" placeholder="Something to fix…" /></label>
+        </div>
+        <p id="confirm-preview" class="confirm-preview hidden"></p>
+        <p id="confirm-result" class="confirm-result hidden"></p>
+        <div class="modal-actions">
+          <button id="confirm-cancel" class="ghost">Cancel</button>
+          <button id="confirm-preview-btn" class="primary">Preview</button>
+          <button id="confirm-approve" class="primary hidden">Approve &amp; create</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="./app.js"></script>

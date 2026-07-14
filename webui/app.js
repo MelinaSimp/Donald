@@ -54,7 +54,7 @@ async function boot() {
 function enterApp() {
   show("app");
   renderCalendar(new Date());
-  loadRuns(); loadProviders(); loadBilling(); connectWs();
+  loadRuns(); loadProviders(); loadBilling(); loadMemory(); connectWs();
   startOrb(); startStarfield(); startClock();
 }
 
@@ -147,6 +147,87 @@ async function connectProvider(name) {
   if (r.ok) { const { authorize_url } = await r.json(); window.open(authorize_url, "_blank"); }
 }
 
+/* ── memory panel ─────────────────────────────────────────────────────── */
+async function loadMemory() {
+  const list = $("memory");
+  try {
+    const { facts } = await (await api("/memory")).json();
+    if (!facts.length) { list.innerHTML = '<li class="muted">Tell Donald something about you →</li>'; return; }
+    list.innerHTML = "";
+    for (const f of facts) {
+      const li = document.createElement("li");
+      const tick = document.createElement("span"); tick.className = "tick";
+      const txt = document.createElement("span"); txt.className = "mtext"; txt.textContent = f.content;
+      const del = document.createElement("button"); del.className = "mdel"; del.title = "Forget this"; del.textContent = "✕";
+      del.onclick = async () => { await api("/memory/" + f.id, { method: "DELETE" }); loadMemory(); };
+      li.append(tick, txt, del);
+      list.appendChild(li);
+    }
+  } catch { /* leave placeholder */ }
+}
+
+/* ── voice (browser speech; server Deepgram/ElevenLabs is the HQ path) ─── */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recog = null, listening = false, speakNext = false;
+function toggleVoice() {
+  if (!SR) return toast("Voice input isn't supported in this browser.");
+  if (listening) { recog.stop(); return; }
+  recog = new SR(); recog.lang = "en-US"; recog.interimResults = false; recog.maxAlternatives = 1;
+  recog.onstart = () => { listening = true; $("voice").classList.add("listening"); };
+  recog.onend = () => { listening = false; $("voice").classList.remove("listening"); };
+  recog.onerror = () => toast("Didn't catch that — try again.");
+  recog.onresult = (e) => {
+    const text = e.results[0][0].transcript;
+    $("chat-input").value = text; speakNext = true; sendChat(new Event("submit"));
+  };
+  recog.start();
+}
+function speak(text) {
+  if (!window.speechSynthesis || !text) return;
+  const u = new SpeechSynthesisUtterance(text.slice(0, 600));
+  u.rate = 1.05; u.pitch = 1;
+  window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
+}
+function toast(msg) {
+  const el = document.createElement("div"); el.textContent = msg; el.className = "toast";
+  el.style.cssText = "position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:#141821;border:1px solid var(--line);color:var(--text);padding:10px 18px;border-radius:10px;z-index:9;font-size:13px";
+  document.body.appendChild(el); setTimeout(() => el.remove(), 2400);
+}
+
+/* ── confirmation-gated action (create a GitHub issue) ────────────────── */
+function openIssueModal() {
+  $("confirm-overlay").classList.remove("hidden");
+  $("confirm-preview").classList.add("hidden");
+  $("confirm-result").classList.add("hidden");
+  $("confirm-approve").classList.add("hidden");
+  $("confirm-preview-btn").classList.remove("hidden");
+  $("issue-repo").value = ""; $("issue-title").value = "";
+}
+function closeIssueModal() { $("confirm-overlay").classList.add("hidden"); }
+async function issuePreview() {
+  const repo = $("issue-repo").value.trim(), title = $("issue-title").value.trim();
+  if (!repo || !title) return toast("Enter a repo (owner/name) and a title.");
+  const r = await api("/integrations/github/issue", { method: "POST", body: JSON.stringify({ repo, title }) });
+  const data = await r.json();
+  if (!r.ok) return showConfirmResult(data.detail || "Couldn't preview.", false);
+  const pv = $("confirm-preview");
+  pv.textContent = "Donald will: " + data.preview.summary; pv.classList.remove("hidden");
+  $("confirm-preview-btn").classList.add("hidden");
+  $("confirm-approve").classList.remove("hidden");
+}
+async function issueApprove() {
+  const repo = $("issue-repo").value.trim(), title = $("issue-title").value.trim();
+  const r = await api("/integrations/github/issue", { method: "POST", body: JSON.stringify({ repo, title, confirm: true }) });
+  const data = await r.json();
+  if (!r.ok) return showConfirmResult(data.detail || "Failed.", false);
+  showConfirmResult("Created: " + (data.url || "issue #" + data.number), true);
+}
+function showConfirmResult(text, ok) {
+  const el = $("confirm-result"); el.textContent = text;
+  el.className = "confirm-result " + (ok ? "ok" : "err"); el.classList.remove("hidden");
+  $("confirm-approve").classList.add("hidden"); $("confirm-preview-btn").classList.add("hidden");
+}
+
 /* ── billing (plan pill) ──────────────────────────────────────────────── */
 async function loadBilling() {
   const pill = $("plan");
@@ -200,7 +281,8 @@ function handleEvent(e) {
     h.push({ kind: "error", text: friendlyError(e.text) }); streamEl = null; awaiting = null;
   }
   if (target === persona) renderMessages();
-  if (e.type === "final" || e.type === "error") loadRuns();  // refresh stats/agenda
+  if (e.type === "final" || e.type === "error") { loadRuns(); loadMemory(); }
+  if (e.type === "final" && speakNext) { speak(e.text); speakNext = false; }
 }
 function friendlyError(text) {
   const t = String(text || "");
@@ -305,6 +387,12 @@ $("tab-signup").onclick = () => setMode("signup");
 $("auth-form").onsubmit = submitAuth;
 $("chat-form").onsubmit = sendChat;
 $("logout").onclick = logout;
+$("voice").onclick = toggleVoice;
+$("btn-insert").onclick = openIssueModal;
+$("btn-upload").onclick = () => toast("File upload is coming soon.");
+$("confirm-cancel").onclick = closeIssueModal;
+$("confirm-preview-btn").onclick = issuePreview;
+$("confirm-approve").onclick = issueApprove;
 $("cal-prev").onclick = () => renderCalendar(new Date(calDate.getFullYear(), calDate.getMonth() - 1, 1));
 $("cal-next").onclick = () => renderCalendar(new Date(calDate.getFullYear(), calDate.getMonth() + 1, 1));
 document.querySelectorAll(".ctab").forEach(t => t.onclick = () => switchPersona(t.dataset.persona));

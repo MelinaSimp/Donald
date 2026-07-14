@@ -104,6 +104,28 @@ class MemoryStore:
         )
         return [r["content"] for r in rows]
 
+    def facts_full(self, user_id: str, limit: int = 100) -> list[dict[str, Any]]:
+        """Facts with ids, so the UI can show and delete individual entries."""
+        return self.db.query(
+            "SELECT id, content, created_at FROM memory_items WHERE user_id = ? "
+            "AND kind = ? ORDER BY updated_at DESC LIMIT ?",
+            (user_id, FACT, limit),
+        )
+
+    def delete(self, user_id: str, item_id: str) -> bool:
+        """Delete one memory item — scoped to the user, so no one can delete
+        another user's memory even with a guessed id."""
+        existing = self.db.query_one(
+            "SELECT id FROM memory_items WHERE user_id = ? AND id = ?",
+            (user_id, item_id),
+        )
+        if not existing:
+            return False
+        self.db.execute(
+            "DELETE FROM memory_items WHERE user_id = ? AND id = ?", (user_id, item_id)
+        )
+        return True
+
     def search(
         self, user_id: str, query: str, k: int = 5, kinds: tuple[str, ...] | None = None,
     ) -> list[MemoryHit]:

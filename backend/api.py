@@ -23,6 +23,7 @@ from security.bearer_auth import extract_bearer
 from .billing import BillingError, BillingService
 from .crypto import TokenCipher
 from .db import DB, open_db
+from .memory import MemoryStore
 from .models import User
 from .oauth import PROVIDERS, OAuthBroker, OAuthError
 from .provider_api import ProviderAPI, ProviderError
@@ -50,6 +51,17 @@ class TokenBody(BaseModel):
     secret: dict[str, Any] = Field(description="Provider token payload to encrypt")
 
 
+class FactBody(BaseModel):
+    content: str = Field(min_length=1, max_length=500)
+
+
+class IssueBody(BaseModel):
+    repo: str = Field(description="owner/name")
+    title: str = Field(min_length=1, max_length=256)
+    body: str = Field(default="", max_length=8000)
+    confirm: bool = False
+
+
 def create_app(
     db: DB | None = None,
     cipher: TokenCipher | None = None,
@@ -67,6 +79,7 @@ def create_app(
     broker = broker or OAuthBroker(tokens)
     billing = billing or BillingService(SubscriptionRepo(db))
     provider_api = ProviderAPI(broker)
+    memory = MemoryStore(db)
 
     app = FastAPI(title="Donald Backend", version="0.1.0")
 
@@ -177,6 +190,17 @@ def create_app(
             raise HTTPException(status_code=404, detail="not connected")
         return who
 
+    @app.post("/integrations/github/issue")
+    def github_issue(body: IssueBody, user: User = Depends(current_user)) -> dict:
+        """Consequential action behind a confirmation gate: without confirm:true
+        it returns a preview; with it, it actually opens the issue."""
+        try:
+            return provider_api.create_github_issue(
+                user.id, body.repo, body.title, body.body, confirm=body.confirm
+            )
+        except ProviderError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
     @app.get("/oauth/{provider}/authorize")
     def oauth_authorize(provider: str, user: User = Depends(current_user)) -> dict:
         try:
@@ -222,6 +246,24 @@ def create_app(
         except BillingError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
         return {"received": True, "type": event_type}
+
+    # ── memory (M2): what Donald remembers, visible + editable ───────────────
+    @app.get("/memory")
+    def memory_list(user: User = Depends(current_user)) -> dict:
+        return {"facts": memory.facts_full(user.id)}
+
+    @app.post("/memory")
+    def memory_add(body: FactBody, user: User = Depends(current_user)) -> dict:
+        fact_id = memory.add_fact(user.id, body.content)
+        if not fact_id:
+            raise HTTPException(status_code=400, detail="empty fact")
+        return {"id": fact_id, "content": body.content.strip()}
+
+    @app.delete("/memory/{item_id}")
+    def memory_delete(item_id: str, user: User = Depends(current_user)) -> dict:
+        if not memory.delete(user.id, item_id):
+            raise HTTPException(status_code=404, detail="not found")
+        return {"ok": True}
 
     # ── run history ───────────────────────────────────────────────────────────
     @app.get("/runs")
