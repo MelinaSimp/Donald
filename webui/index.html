@@ -3,15 +3,17 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0b0d12" />
-  <title>Donald</title>
+  <meta name="theme-color" content="#0a0b0e" />
+  <title>Donald OS</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
+  <canvas id="starfield"></canvas>
+
   <!-- Auth -->
   <main id="auth" class="auth hidden">
     <div class="card">
-      <h1 class="brand">Donald</h1>
+      <div class="wordmark">DONALD_OS<span class="tm">™</span></div>
       <p class="tagline">Your personal AI team. It remembers.</p>
       <div class="tabs">
         <button id="tab-login" class="tab active">Log in</button>
@@ -22,8 +24,10 @@
         <label>Password<input id="f-password" type="password" minlength="8" required /></label>
         <div class="signup-only hidden">
           <label>Display name<input id="f-name" type="text" /></label>
-          <label>Country<input id="f-country" type="text" maxlength="2" placeholder="US" /></label>
-          <label>Date of birth<input id="f-dob" type="date" /></label>
+          <div class="row">
+            <label>Country<input id="f-country" type="text" maxlength="2" placeholder="US" /></label>
+            <label>Date of birth<input id="f-dob" type="date" /></label>
+          </div>
           <label class="check"><input id="f-tos" type="checkbox" /> I accept the Terms of Service</label>
         </div>
         <button id="auth-submit" class="primary" type="submit">Log in</button>
@@ -33,27 +37,86 @@
   </main>
 
   <!-- App -->
-  <div id="app" class="app hidden">
-    <aside class="sidebar">
-      <div class="side-head"><span class="brand small">Donald</span></div>
-      <section class="side-section">
-        <h2>Integrations</h2>
-        <ul id="integrations" class="integrations"><li class="muted">Loading…</li></ul>
-        <p class="hint">OAuth connect flow arrives in M4.</p>
-      </section>
-      <div class="side-foot">
-        <span id="who" class="who muted"></span>
-        <button id="logout" class="link">Log out</button>
+  <div id="app" class="os hidden">
+    <!-- top bar -->
+    <header class="topbar">
+      <div class="lights"><i class="r"></i><i></i><i></i></div>
+      <div class="brand">DONALD_OS<span class="tm">™</span><span class="devpill">DEV ▾</span></div>
+      <button class="voicepill"><span class="mic"></span> VOICE</button>
+      <div class="topright">
+        <span class="statuspill">CALM</span>
+        <span id="clock" class="clock">—</span>
       </div>
-    </aside>
-    <main class="chat">
-      <header class="chat-head"><h2>Chat</h2><span id="conn" class="conn"></span></header>
-      <div id="messages" class="messages"></div>
-      <form id="chat-form" class="composer">
-        <input id="chat-input" type="text" placeholder="Message Donald…" autocomplete="off" />
-        <button class="primary" type="submit">Send</button>
-      </form>
-    </main>
+    </header>
+
+    <!-- body -->
+    <div class="body">
+      <!-- left rail -->
+      <aside class="rail">
+        <div class="panel stats">
+          <div class="stat"><span class="dot on"></span> Active <b id="stat-active">0</b></div>
+          <div class="stat"><span class="dot done"></span> Done <b id="stat-done">0</b></div>
+          <div class="idle" id="idle-note">All companions idle</div>
+        </div>
+
+        <div class="panel calendar">
+          <div class="cal-head"><button id="cal-prev">‹</button><span id="cal-title">—</span><button id="cal-next">›</button></div>
+          <div class="cal-grid" id="cal-grid"></div>
+        </div>
+
+        <div class="panel agenda">
+          <div class="agenda-head">TODAY</div>
+          <ul id="agenda" class="agenda-list"><li class="muted">No activity yet</li></ul>
+        </div>
+
+        <div class="panel integrations">
+          <div class="agenda-head">INTEGRATIONS</div>
+          <ul id="integrations" class="int-list"><li class="muted">Loading…</li></ul>
+        </div>
+      </aside>
+
+      <!-- center stage -->
+      <main class="stage">
+        <canvas id="orb"></canvas>
+        <div class="stage-label">DONALD</div>
+        <div class="carousel">
+          <button class="carrow" id="orb-prev">‹</button>
+          <span class="pager"><i class="on"></i><i></i><i></i><i></i></span>
+          <button class="carrow" id="orb-next">›</button>
+        </div>
+        <button class="knowledge">▾ KNOWLEDGE VIEW</button>
+      </main>
+
+      <!-- right column -->
+      <section class="rightcol">
+        <div class="panel docs">
+          <ul id="docs" class="doc-list"><li class="muted">No documents yet</li></ul>
+          <div class="doc-actions">
+            <button class="ghost" id="btn-upload">⬆ UPLOAD</button>
+            <button class="ghost" id="btn-insert">＋ INSERT</button>
+          </div>
+        </div>
+
+        <div class="panel chatpanel">
+          <nav class="ctabs" id="ctabs">
+            <button class="ctab active" data-persona="donald">DONALD</button>
+            <button class="ctab" data-persona="engineer">ENGINEER</button>
+            <button class="ctab" data-persona="finance">FINANCE</button>
+            <button class="ctab" data-persona="marketer">MARKETER</button>
+            <button class="ctab" data-persona="research">RESEARCH</button>
+          </nav>
+          <div id="messages" class="messages"></div>
+          <form id="chat-form" class="composer">
+            <span class="plus">＋</span>
+            <input id="chat-input" type="text" placeholder="Message Donald…" autocomplete="off" />
+            <button class="send" type="submit"><span id="conn-dot" class="conn-dot"></span></button>
+          </form>
+          <div class="disclaimer">AI-generated · responses may be inaccurate</div>
+        </div>
+      </section>
+    </div>
+
+    <button id="logout" class="logout">Log out</button>
   </div>
 
   <script src="./app.js"></script>

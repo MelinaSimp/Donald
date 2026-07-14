@@ -21,7 +21,7 @@ def test_root_redirects_to_app():
 def test_shell_html_is_served():
     r = _client().get("/app/")
     assert r.status_code == 200
-    assert "<title>Donald</title>" in r.text
+    assert "DONALD_OS" in r.text
     assert "app.js" in r.text
 
 
