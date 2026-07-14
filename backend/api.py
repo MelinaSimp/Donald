@@ -25,6 +25,7 @@ from .crypto import TokenCipher
 from .db import DB, open_db
 from .models import User
 from .oauth import PROVIDERS, OAuthBroker, OAuthError
+from .provider_api import ProviderAPI, ProviderError
 from .repo import (
     EmailTaken, RunRepo, SessionRepo, SubscriptionRepo, TokenRepo, UserRepo,
 )
@@ -65,6 +66,7 @@ def create_app(
     runs = RunRepo(db)
     broker = broker or OAuthBroker(tokens)
     billing = billing or BillingService(SubscriptionRepo(db))
+    provider_api = ProviderAPI(broker)
 
     app = FastAPI(title="Donald Backend", version="0.1.0")
 
@@ -162,6 +164,18 @@ def create_app(
              "connected": name in connected}
             for name in PROVIDERS
         ]}
+
+    @app.get("/integrations/{provider}/whoami")
+    def integration_whoami(provider: str, user: User = Depends(current_user)) -> dict:
+        """Prove a connected integration is usable: call the provider with the
+        user's stored (auto-refreshed) token and return the account identity."""
+        try:
+            who = provider_api.whoami(user.id, provider)
+        except ProviderError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        if who is None:
+            raise HTTPException(status_code=404, detail="not connected")
+        return who
 
     @app.get("/oauth/{provider}/authorize")
     def oauth_authorize(provider: str, user: User = Depends(current_user)) -> dict:

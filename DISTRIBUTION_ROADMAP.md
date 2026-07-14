@@ -15,6 +15,28 @@ systems: consolidation, a multi-user backend, real memory, a desktop shell, an
 OAuth broker, billing, and code-signing. Each is its own slog. This doc sequences
 them.
 
+## Build status
+
+Everything that can be built and verified in a headless environment is done and
+tested (**219 tests green**, verified on SQLite and live Postgres). What remains
+inherently needs a real build/signing machine and live third-party credentials.
+
+| Milestone | Status |
+|-----------|--------|
+| M0 consolidate + agent-core reconciliation | ✅ done |
+| M1 multi-user backend + authenticated gateway | ✅ done |
+| M2 semantic memory (+ pluggable embedder, summarizer) | ✅ done |
+| M3 **web** shell (Donald OS dashboard) | ✅ done (browser-verified) |
+| M3 **desktop** wrapper (Tauri + auto-update) | 📄 documented — needs a build machine |
+| M4 OAuth broker + integration use (connect → call provider) | ✅ done |
+| M5 billing (Stripe subscriptions + signed webhooks) | ✅ done |
+| M6 code-signing / notarization / update delivery | 📄 documented — needs certs |
+| M7 hardening | ▶ partial (rate-limit, confirmation gates, audit, injection gate exist) |
+
+The full product loop is demonstrable end to end: **sign up → dashboard →
+per-user memory-aware chat → connect an integration and call it → upgrade to Pro.**
+Setup for the two documented milestones is in [`DEPLOYMENT.md`](./DEPLOYMENT.md).
+
 ---
 
 ## The "distributable v1" definition of done

@@ -88,11 +88,14 @@ each chat per user; **M2** landed — per-user 3-tier semantic memory injected i
 each turn. Both verified on SQLite and live Postgres. A **web shell** (`webui/`,
 served by `serve.py`) makes it usable end to end — signup/login → per-user
 streaming chat → integrations → billing — verified in a real browser. **M4** (the
-OAuth broker: connect/callback/refresh) and **M5** (Stripe subscriptions +
-signed webhooks + plan gating) are implemented and tested. What genuinely remains
-needs a real build/signing environment, not this container: the **Tauri desktop
-wrapper** (rest of M3) and **code-signing / auto-update** (M6) — both documented
-in [`DEPLOYMENT.md`](./DEPLOYMENT.md). The roadmap sequences M0–M7.
+OAuth broker: connect/callback/refresh, plus calling a provider with the stored
+auto-refreshed token) and **M5** (Stripe subscriptions + signed webhooks + plan
+gating) are implemented and tested — **219 tests green**, verified on SQLite and
+live Postgres. The full loop runs end to end: sign up → dashboard → per-user
+memory-aware chat → connect an integration and call it → upgrade to Pro. What
+genuinely remains needs a real build/signing environment, not this container: the
+**Tauri desktop wrapper** (rest of M3) and **code-signing / auto-update** (M6) —
+both documented in [`DEPLOYMENT.md`](./DEPLOYMENT.md).
 
 ## Integration strategy
 
