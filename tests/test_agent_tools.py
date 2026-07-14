@@ -113,7 +113,7 @@ def test_model_can_call_an_integration_tool():
     ]
     orch = _orch(_LLM(script))
     sess = Session(session_id="s"); sess.tools = tools
-    events = asyncio.get_event_loop().run_until_complete(_drain(orch, sess, "list my repos"))
+    events = asyncio.run(_drain(orch, sess, "list my repos"))
     names = [e.get("name") for e in events if e["type"] in ("tool_call", "tool_result")]
     assert "github_list_repos" in names
     assert any(e["type"] == "final" and "acme/app" in e["text"] for e in events)
@@ -131,7 +131,7 @@ def test_consequential_tool_is_gated():
     async def deny(summary, reason): return False   # user says no
     orch.confirm_cb = deny
     sess = Session(session_id="s"); sess.tools = tools
-    events = asyncio.get_event_loop().run_until_complete(_drain(orch, sess, "open an issue"))
+    events = asyncio.run(_drain(orch, sess, "open an issue"))
     assert any(e["type"] == "tool_result" and e.get("declined") for e in events)
 
 
