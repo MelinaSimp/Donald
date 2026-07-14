@@ -86,10 +86,13 @@ reconciliation done; **M1** landed — multi-tenant accounts, bearer auth, encry
 per-user integration tokens, and an authenticated gateway that scopes and records
 each chat per user; **M2** landed — per-user 3-tier semantic memory injected into
 each turn. Both verified on SQLite and live Postgres. A **web shell** (`webui/`,
-served by `serve.py`) now makes it usable end to end — signup/login → per-user
-streaming chat → integrations — verified in a real browser. Still ahead: wrapping
-that shell in a Tauri desktop app with auto-update (the rest of M3), the OAuth
-broker (M4), billing (M5), and signing (M6). The roadmap sequences M0–M7.
+served by `serve.py`) makes it usable end to end — signup/login → per-user
+streaming chat → integrations → billing — verified in a real browser. **M4** (the
+OAuth broker: connect/callback/refresh) and **M5** (Stripe subscriptions +
+signed webhooks + plan gating) are implemented and tested. What genuinely remains
+needs a real build/signing environment, not this container: the **Tauri desktop
+wrapper** (rest of M3) and **code-signing / auto-update** (M6) — both documented
+in [`DEPLOYMENT.md`](./DEPLOYMENT.md). The roadmap sequences M0–M7.
 
 ## Integration strategy
 

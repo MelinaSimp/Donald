@@ -195,6 +195,53 @@ class TokenRepo:
 
 
 # ── agent run history ───────────────────────────────────────────────────────
+class SubscriptionRepo:
+    """One row per user; created lazily on first read as a free/inactive plan."""
+
+    def __init__(self, db: DB) -> None:
+        self.db = db
+
+    def get(self, user_id: str) -> dict[str, Any]:
+        row = self.db.query_one(
+            "SELECT * FROM subscriptions WHERE user_id = ?", (user_id,)
+        )
+        if row:
+            return row
+        return {
+            "user_id": user_id, "stripe_customer_id": None,
+            "stripe_subscription_id": None, "plan": "free", "status": "inactive",
+            "current_period_end": None, "updated_at": None,
+        }
+
+    def by_customer(self, customer_id: str) -> str | None:
+        row = self.db.query_one(
+            "SELECT user_id FROM subscriptions WHERE stripe_customer_id = ?",
+            (customer_id,),
+        )
+        return row["user_id"] if row else None
+
+    def upsert(self, user_id: str, **fields: Any) -> None:
+        current = self.db.query_one(
+            "SELECT user_id FROM subscriptions WHERE user_id = ?", (user_id,)
+        )
+        fields["updated_at"] = _iso(_now())
+        if current:
+            cols = ", ".join(f"{k} = ?" for k in fields)
+            self.db.execute(
+                f"UPDATE subscriptions SET {cols} WHERE user_id = ?",
+                (*fields.values(), user_id),
+            )
+        else:
+            fields.setdefault("plan", "free")
+            fields.setdefault("status", "inactive")
+            cols = ", ".join(["user_id", *fields])
+            marks = ", ".join(["?"] * (len(fields) + 1))
+            self.db.execute(
+                f"INSERT INTO subscriptions ({cols}) VALUES ({marks})",
+                (user_id, *fields.values()),
+            )
+
+
 class RunRepo:
     def __init__(self, db: DB) -> None:
         self.db = db

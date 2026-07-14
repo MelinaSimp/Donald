@@ -20,11 +20,14 @@ from pydantic import BaseModel, EmailStr, Field
 from security.auth_ratelimit import AuthRateLimiter, client_ip
 from security.bearer_auth import extract_bearer
 
+from .billing import BillingError, BillingService
 from .crypto import TokenCipher
 from .db import DB, open_db
 from .models import User
 from .oauth import PROVIDERS, OAuthBroker, OAuthError
-from .repo import EmailTaken, RunRepo, SessionRepo, TokenRepo, UserRepo
+from .repo import (
+    EmailTaken, RunRepo, SessionRepo, SubscriptionRepo, TokenRepo, UserRepo,
+)
 
 
 # ── request bodies ──────────────────────────────────────────────────────────
@@ -51,6 +54,7 @@ def create_app(
     cipher: TokenCipher | None = None,
     rate_limiter: AuthRateLimiter | None = None,
     broker: OAuthBroker | None = None,
+    billing: BillingService | None = None,
 ) -> FastAPI:
     db = db or open_db()
     cipher = cipher or TokenCipher()
@@ -60,6 +64,7 @@ def create_app(
     tokens = TokenRepo(db, cipher)
     runs = RunRepo(db)
     broker = broker or OAuthBroker(tokens)
+    billing = billing or BillingService(SubscriptionRepo(db))
 
     app = FastAPI(title="Donald Backend", version="0.1.0")
 
@@ -174,6 +179,35 @@ def create_app(
         except OAuthError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
         return RedirectResponse(url="/app/?connected=" + provider, status_code=303)
+
+    # ── billing (M5): Stripe subscriptions + webhooks ────────────────────────
+    @app.get("/billing/subscription")
+    def billing_subscription(user: User = Depends(current_user)) -> dict:
+        return {"configured": billing.is_configured(), **billing.subscription(user.id)}
+
+    @app.post("/billing/checkout")
+    def billing_checkout(user: User = Depends(current_user)) -> dict:
+        try:
+            return {"url": billing.start_checkout(user.id, user.email)}
+        except BillingError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.post("/billing/portal")
+    def billing_portal(user: User = Depends(current_user)) -> dict:
+        try:
+            return {"url": billing.portal(user.id, user.email)}
+        except BillingError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.post("/billing/webhook")
+    async def billing_webhook(request: Request) -> dict:
+        payload = await request.body()
+        sig = request.headers.get("stripe-signature", "")
+        try:
+            event_type = billing.handle_webhook(payload, sig)
+        except BillingError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        return {"received": True, "type": event_type}
 
     # ── run history ───────────────────────────────────────────────────────────
     @app.get("/runs")

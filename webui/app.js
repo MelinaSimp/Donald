@@ -54,7 +54,7 @@ async function boot() {
 function enterApp() {
   show("app");
   renderCalendar(new Date());
-  loadRuns(); loadProviders(); connectWs();
+  loadRuns(); loadProviders(); loadBilling(); connectWs();
   startOrb(); startStarfield(); startClock();
 }
 
@@ -145,6 +145,26 @@ async function loadProviders() {
 async function connectProvider(name) {
   const r = await api(`/oauth/${name}/authorize`);
   if (r.ok) { const { authorize_url } = await r.json(); window.open(authorize_url, "_blank"); }
+}
+
+/* ── billing (plan pill) ──────────────────────────────────────────────── */
+async function loadBilling() {
+  const pill = $("plan");
+  try {
+    const s = await (await api("/billing/subscription")).json();
+    pill.classList.remove("hidden", "pro", "upgrade");
+    if (s.plan === "pro") { pill.textContent = "PRO"; pill.classList.add("pro"); pill.onclick = openPortal; }
+    else if (s.configured) { pill.textContent = "UPGRADE"; pill.classList.add("upgrade"); pill.onclick = startCheckout; }
+    else { pill.textContent = "FREE"; pill.onclick = null; }
+  } catch { pill.classList.add("hidden"); }
+}
+async function startCheckout() {
+  const r = await api("/billing/checkout", { method: "POST" });
+  if (r.ok) location.href = (await r.json()).url;
+}
+async function openPortal() {
+  const r = await api("/billing/portal", { method: "POST" });
+  if (r.ok) location.href = (await r.json()).url;
 }
 
 /* ── chat (tabbed personas over one WS) ───────────────────────────────── */

@@ -58,6 +58,9 @@ input:focus { outline: 2px solid var(--orange); outline-offset: 0; border-color:
 .voicepill .mic { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
 .topright { grid-column: 3; justify-self: end; display: flex; align-items: center; gap: 16px; }
 .statuspill { border: 1px solid var(--line); border-radius: 20px; padding: 5px 14px; font-size: 11px; letter-spacing: 0.14em; color: var(--teal); }
+.planpill { border: 1px solid var(--line); background: #12151b; border-radius: 20px; padding: 5px 14px; font-size: 11px; letter-spacing: 0.12em; color: var(--muted); }
+.planpill.pro { color: var(--orange); border-color: var(--orange); }
+.planpill.upgrade { color: #1a0e06; background: var(--orange); border-color: var(--orange); cursor: pointer; font-weight: 700; }
 .clock { font-family: var(--mono); font-size: 13px; color: var(--muted); }
 
 .body { flex: 1; display: grid; grid-template-columns: 288px 1fr 400px; gap: 12px; min-height: 0; }

@@ -106,6 +106,28 @@ or cross-user state fails verification (CSRF defense). `OAuthBroker.valid_token(
 transparently refreshes an expired access token when a refresh token is present.
 Tokens are stored through `TokenRepo`, so they're Fernet-encrypted at rest.
 
+## Billing (M5)
+
+Stripe subscriptions in `billing.py` (schema: `migrations/003_billing.sql`).
+Checkout and the customer portal are created through an injectable `StripeClient`;
+**subscription state is defined by webhooks, not the checkout redirect** — the
+redirect only tells the browser it's done, the signed webhook is what flips the
+user to `pro`.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/billing/subscription` | `{ plan, status, current_period_end, configured }` |
+| POST | `/billing/checkout` | Start Stripe Checkout → `{ url }` |
+| POST | `/billing/portal` | Manage/cancel → `{ url }` |
+| POST | `/billing/webhook` | Stripe → us; signature-verified |
+
+Every webhook's `Stripe-Signature` is verified (`verify_stripe_signature`, the
+`t=…,v1=…` HMAC scheme with a timestamp-tolerance) before it's trusted;
+`checkout.session.completed` carries our `client_reference_id` (the user_id) so
+we map the payment back to the right account, and `customer.subscription.*`
+events look the user up by `stripe_customer_id`. Unconfigured (no keys) → the API
+reports `configured: false` and checkout 400s rather than pretending.
+
 ## Next (not yet here)
 
 - Wire `RunRepo` into the gateway's agent loop so runs are recorded per user.
