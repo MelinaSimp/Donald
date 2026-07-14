@@ -27,6 +27,7 @@ from .memory import MemoryStore
 from .models import User
 from .oauth import PROVIDERS, OAuthBroker, OAuthError
 from .provider_api import ProviderAPI, ProviderError
+from .updates import load_manifest, resolve_update
 from .repo import (
     EmailTaken, RunRepo, SessionRepo, SubscriptionRepo, TokenRepo, UserRepo,
 )
@@ -108,6 +109,16 @@ def create_app(
     @app.get("/health")
     def health() -> dict:
         return {"ok": True, "engine": "postgres" if db.is_postgres else "sqlite"}
+
+    # ── desktop auto-update (M6): what the Tauri updater polls ────────────────
+    from fastapi import Response
+
+    @app.get("/api/update/{target}/{arch}/{current_version}")
+    def update_check(target: str, arch: str, current_version: str):
+        upd = resolve_update(load_manifest(), target, arch, current_version)
+        if not upd:
+            return Response(status_code=204)  # up to date / no build for platform
+        return upd
 
     # ── auth ──────────────────────────────────────────────────────────────────
     @app.post("/auth/signup")

@@ -1,0 +1,10 @@
+# Rust / Tauri build output
+src-tauri/target/
+src-tauri/gen/
+
+# Node
+node_modules/
+
+# Signing keys — NEVER commit these
+*.key
+*.key.pub

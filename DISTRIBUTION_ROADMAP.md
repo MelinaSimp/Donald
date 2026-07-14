@@ -27,10 +27,10 @@ inherently needs a real build/signing machine and live third-party credentials.
 | M1 multi-user backend + authenticated gateway | ✅ done |
 | M2 semantic memory (+ pluggable embedder, summarizer) | ✅ done |
 | M3 **web** shell (Donald OS dashboard) | ✅ done (browser-verified) |
-| M3 **desktop** wrapper (Tauri + auto-update) | 📄 documented — needs a build machine |
+| M3 **desktop** wrapper (Tauri + auto-update) | ✅ built + updater-signing verified on Linux; mac/Win installers need those machines |
 | M4 OAuth broker + integration use (connect → call provider) | ✅ done |
 | M5 billing (Stripe subscriptions + signed webhooks) | ✅ done |
-| M6 code-signing / notarization / update delivery | 📄 documented — needs certs |
+| M6 update **signing + delivery** (keypair, signed artifacts, `/api/update` endpoint) | ✅ verified; **OS code-signing** (Apple/Windows certs) needs those + certs |
 | M7 hardening | ▶ partial (rate-limit, confirmation gates, audit, injection gate exist) |
 
 The full product loop is demonstrable end to end: **sign up → dashboard →
