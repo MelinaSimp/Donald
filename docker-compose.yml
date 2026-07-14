@@ -1,0 +1,43 @@
+# Local production-like stack: the server + Postgres. Fill your keys in a .env
+# file next to this (BACKEND_SECRET_KEY, DONALD_API_KEY, DONALD_MODEL, …), then:
+#   docker compose up --build
+#   open http://localhost:8000/app
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: donald
+      POSTGRES_DB: donald
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://postgres:donald@db:5432/donald
+      BACKEND_SECRET_KEY: ${BACKEND_SECRET_KEY:?set BACKEND_SECRET_KEY in .env}
+      DONALD_PROVIDER: ${DONALD_PROVIDER:-openai}
+      DONALD_BASE_URL: ${DONALD_BASE_URL:-https://openrouter.ai/api/v1}
+      DONALD_API_KEY: ${DONALD_API_KEY:-}
+      DONALD_MODEL: ${DONALD_MODEL:-}
+      DONALD_MAX_TOKENS: ${DONALD_MAX_TOKENS:-4096}
+      DONALD_DAILY_TURN_LIMIT: ${DONALD_DAILY_TURN_LIMIT:-500}
+      HERMES_BASE_URL: ${HERMES_BASE_URL:-http://host.docker.internal:8642}
+      HERMES_API_KEY: ${HERMES_API_KEY:-}
+      VOICE_ENABLED: ${VOICE_ENABLED:-false}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+      ELEVENLABS_VOICE_ID: ${ELEVENLABS_VOICE_ID:-}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  dbdata:

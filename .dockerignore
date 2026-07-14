@@ -1,0 +1,13 @@
+.git
+.github
+desktop
+archive
+tests
+web/node_modules
+**/node_modules
+**/target
+**/__pycache__
+donald_data
+*.db
+scratchpad
+*.md

@@ -1,0 +1,25 @@
+# Fly.io deploy for the Donald server. `fly launch` (or `fly deploy`) uses the
+# Dockerfile. Attach Postgres with `fly postgres create` + `fly postgres attach`
+# (sets DATABASE_URL), then set the rest with `fly secrets set …`:
+#   fly secrets set BACKEND_SECRET_KEY=… DONALD_PROVIDER=openai \
+#     DONALD_BASE_URL=https://openrouter.ai/api/v1 DONALD_API_KEY=… DONALD_MODEL=…
+app = "donald-os"
+primary_region = "iad"
+
+[build]
+
+[env]
+  PORT = "8000"
+  DONALD_MAX_TOKENS = "4096"
+  DONALD_DAILY_TURN_LIMIT = "500"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

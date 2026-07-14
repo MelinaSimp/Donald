@@ -21,6 +21,26 @@ Check what's configured any time:
 python scripts/check_config.py
 ```
 
+### Deploy it
+
+Two ready paths (both use the lean `requirements-server.txt`, not the full dev set):
+
+```bash
+# Local prod-like stack (server + Postgres), keys in a .env file:
+docker compose up --build          # → http://localhost:8000/app
+
+# Fly.io:
+fly launch --no-deploy             # uses the Dockerfile + fly.toml
+fly postgres create && fly postgres attach   # sets DATABASE_URL
+fly secrets set BACKEND_SECRET_KEY=… DONALD_PROVIDER=openai \
+  DONALD_BASE_URL=https://openrouter.ai/api/v1 DONALD_API_KEY=… DONALD_MODEL=…
+fly deploy
+```
+
+Migrations run automatically on boot. `DONALD_DAILY_TURN_LIMIT` (default 500 in
+these configs) caps chat turns per user per day so a runaway loop can't burn your
+model credits — set `0` for unlimited.
+
 ## 2. Third-party keys
 
 Everything degrades gracefully — a missing key just disables that path, and

@@ -195,6 +195,46 @@ class TokenRepo:
 
 
 # ── agent run history ───────────────────────────────────────────────────────
+class UsageRepo:
+    """Per-user, per-day turn counter — the cost guardrail."""
+
+    def __init__(self, db: DB) -> None:
+        self.db = db
+
+    def _today(self) -> str:
+        return _now().date().isoformat()
+
+    def today(self, user_id: str) -> int:
+        row = self.db.query_one(
+            "SELECT turns FROM usage_daily WHERE user_id = ? AND day = ?",
+            (user_id, self._today()),
+        )
+        return int(row["turns"]) if row else 0
+
+    def check_and_record(self, user_id: str, limit: int) -> tuple[bool, int]:
+        """If under ``limit``, count one turn and allow it; else deny.
+
+        Returns ``(allowed, turns_used_today)``. limit <= 0 means unlimited.
+        """
+        used = self.today(user_id)
+        if limit > 0 and used >= limit:
+            return False, used
+        day = self._today()
+        if self.db.query_one(
+            "SELECT 1 FROM usage_daily WHERE user_id = ? AND day = ?", (user_id, day)
+        ):
+            self.db.execute(
+                "UPDATE usage_daily SET turns = turns + 1 WHERE user_id = ? AND day = ?",
+                (user_id, day),
+            )
+        else:
+            self.db.execute(
+                "INSERT INTO usage_daily (user_id, day, turns) VALUES (?, ?, 1)",
+                (user_id, day),
+            )
+        return True, used + 1
+
+
 class SubscriptionRepo:
     """One row per user; created lazily on first read as a free/inactive plan."""
 

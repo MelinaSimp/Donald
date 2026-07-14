@@ -143,6 +143,10 @@ def add_gateway_routes(
         message = str(payload.get("message") or "").strip()
         if not message:
             return {"error": "message is required"}
+        # Daily cost guardrail — stop a runaway loop from burning model credits.
+        if auth and user_id and not auth.within_budget(user_id):
+            return {"text": "You've reached today's usage limit — it resets tomorrow.",
+                    "events": [{"type": "limit"}]}
         # Namespacing by user keeps two tenants from sharing a conversation.
         key = f"{user_id}:{session_id}" if user_id else session_id
         run_id = auth.start_run(user_id) if (auth and user_id) else None
@@ -206,6 +210,10 @@ def add_gateway_routes(
                     await websocket.send_json(
                         {"type": "error", "text": "message is required"}
                     )
+                    continue
+                if auth and user_id and not auth.within_budget(user_id):
+                    await websocket.send_json({"type": "final",
+                        "text": "You've reached today's usage limit — it resets tomorrow."})
                     continue
                 key = f"{user_id}:{session_id}" if user_id else session_id
                 run_id = auth.start_run(user_id) if (auth and user_id) else None
