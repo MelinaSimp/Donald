@@ -11,7 +11,7 @@ const api = (path, opts = {}) => {
   return fetch(path, { ...opts, headers });
 };
 
-let mode = "login", ws = null;
+let mode = "login", ws = null, ORB = null;
 
 /* ── auth ─────────────────────────────────────────────────────────────── */
 function setMode(m) {
@@ -55,7 +55,12 @@ function enterApp() {
   show("app");
   renderCalendar(new Date());
   loadRuns(); loadProviders(); loadBilling(); loadMemory(); connectWs();
-  startOrb(); startStarfield(); startClock();
+  ORB = startOrb(); startStarfield(); startClock();
+  setInterval(() => {
+    if (!ORB) return; const n = ORB.activeCount();
+    $("stat-active").textContent = n;
+    $("idle-note").textContent = n ? `${n} companion${n > 1 ? "s" : ""} working…` : "All companions idle";
+  }, 350);
 }
 
 /* ── clock ────────────────────────────────────────────────────────────── */
@@ -272,6 +277,7 @@ function handleEvent(e) {
   const target = awaiting || persona;
   const h = hist(target);
   if (e.type === "delta") {
+    if (ORB) ORB.speak();  // Donald pulses while it talks
     if (!streamEl) { streamEl = { kind: "donald", text: "" }; h.push(streamEl); }
     streamEl.text += e.text;
   } else if (e.type === "final") {
@@ -297,6 +303,7 @@ function sendChat(ev) {
   if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
   hist(persona).push({ kind: "user", text });
   streamEl = null; awaiting = persona;
+  if (ORB) { ORB.think(); ORB.dispatch(chooseAgent(text)); }  // hand the task to a sub-agent
   renderMessages();
   ws.send(JSON.stringify({ type: "chat", session_id: persona, message: text }));
   input.value = "";
@@ -308,42 +315,79 @@ function switchPersona(p) {
   renderMessages();
 }
 
-/* ── orb (rotating dot sphere) ────────────────────────────────────────── */
+/* ── orb system: Donald + orbiting sub-agents ────────────────────────── */
+const AGENTS = [
+  { key: "engineer", label: "ENGINEER", hue: 205 },
+  { key: "finance",  label: "FINANCE",  hue: 158 },
+  { key: "marketer", label: "MARKETER", hue: 190 },
+  { key: "research", label: "RESEARCH", hue: 222 },
+];
+function sphere(n) { const p = []; for (let i = 0; i < n; i++) { const y = 1 - (i / (n - 1)) * 2, r = Math.sqrt(1 - y * y), th = i * 2.399963; p.push([Math.cos(th) * r, y, Math.sin(th) * r]); } return p; }
+function chooseAgent(text) {
+  if (persona !== "donald" && AGENTS.some(a => a.key === persona)) return persona;
+  const t = (text || "").toLowerCase();
+  if (/\b(code|bug|deploy|repo|api|build|test|error)\b/.test(t)) return "engineer";
+  if (/\b(budget|invoice|revenue|cost|price|finance|runway|expense)\b/.test(t)) return "finance";
+  if (/\b(campaign|copy|launch|market|brand|ad|post|content|audience)\b/.test(t)) return "marketer";
+  return "research";
+}
 function startOrb() {
   const canvas = $("orb"), ctx = canvas.getContext("2d");
-  const N = 720, pts = [];
-  for (let i = 0; i < N; i++) {
-    const y = 1 - (i / (N - 1)) * 2, r = Math.sqrt(1 - y * y);
-    const th = i * 2.399963; // golden angle
-    pts.push([Math.cos(th) * r, y, Math.sin(th) * r]);
+  const mainPts = sphere(760), subPts = sphere(150);
+  const subs = AGENTS.map(a => ({ ...a, activity: 0, phase: Math.random() * 6.28 }));
+  let a = 0, box, speaking = 0, thinking = 0, particles = [];
+  function size() { const dpr = Math.min(devicePixelRatio || 1, 2), b = canvas.getBoundingClientRect(); canvas.width = b.width * dpr; canvas.height = b.height * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); box = b; }
+  size(); window.addEventListener("resize", size);
+  function subPos(i, cx, cy, R) {
+    const n = subs.length, ang = -Math.PI / 2 + (i + 0.5) / n * Math.PI * 2;
+    const rx = Math.min(box.width * 0.40, R * 2.5), ry = box.height * 0.33;
+    return { x: cx + Math.cos(ang) * rx, y: cy + Math.sin(ang) * ry, r: R * 0.26 };
   }
-  let a = 0;
-  function size() {
-    const dpr = Math.min(devicePixelRatio || 1, 2), b = canvas.getBoundingClientRect();
-    canvas.width = b.width * dpr; canvas.height = b.height * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    return b;
-  }
-  let box = size();
-  window.addEventListener("resize", () => { box = size(); });
-  (function frame() {
-    if ($("app").classList.contains("hidden")) return requestAnimationFrame(frame);
-    a += 0.0016;
-    ctx.clearRect(0, 0, box.width, box.height);
-    const cx = box.width / 2, cy = box.height / 2, R = Math.min(box.width, box.height) * 0.34;
-    const sa = Math.sin(a), ca = Math.cos(a), tilt = 0.42, st = Math.sin(tilt), ct = Math.cos(tilt);
+  function drawOrb(pts, cx, cy, R, hue, bright, rot) {
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.7);
+    g.addColorStop(0, `hsla(${hue},75%,55%,${0.08 + bright * 0.20})`); g.addColorStop(1, "hsla(0,0%,0%,0)");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, R * 1.7, 0, 6.2832); ctx.fill();
+    const sa = Math.sin(rot), ca = Math.cos(rot), st = Math.sin(0.42), ct = Math.cos(0.42);
     for (const p of pts) {
-      let x = p[0] * ca - p[2] * sa, z = p[0] * sa + p[2] * ca, y = p[1];
-      const y2 = y * ct - z * st, z2 = y * st + z * ct;
-      const depth = (z2 + 1) / 2; // 0 back .. 1 front
-      const sx = cx + x * R, sy = cy + y2 * R;
-      ctx.globalAlpha = 0.15 + depth * 0.85;
-      ctx.fillStyle = `rgb(${40 + depth * 30},${180 + depth * 40},${175 + depth * 30})`;
-      const rad = 0.6 + depth * 1.9;
-      ctx.beginPath(); ctx.arc(sx, sy, rad, 0, 6.2832); ctx.fill();
+      const x = p[0] * ca - p[2] * sa, z = p[0] * sa + p[2] * ca, y2 = p[1] * ct - z * st, z2 = p[1] * st + z * ct;
+      const depth = (z2 + 1) / 2, sx = cx + x * R, sy = cy + y2 * R;
+      ctx.globalAlpha = (0.12 + depth * 0.85) * (0.45 + bright * 0.55);
+      ctx.fillStyle = `hsl(${hue}, ${58 + bright * 30}%, ${44 + depth * 26 + bright * 8}%)`;
+      ctx.beginPath(); ctx.arc(sx, sy, 0.5 + depth * (1.5 + bright * 1.4), 0, 6.2832); ctx.fill();
     }
     ctx.globalAlpha = 1;
+  }
+  (function frame() {
     requestAnimationFrame(frame);
+    if ($("app").classList.contains("hidden")) return;
+    a += 0.0016 + thinking * 0.004; speaking *= 0.93; thinking *= 0.97;
+    ctx.clearRect(0, 0, box.width, box.height);
+    const cx = box.width / 2, cy = box.height / 2, R = Math.min(box.width, box.height) * 0.28;
+    subs.forEach((s, i) => {
+      s.activity *= 0.986; s.phase += 0.02;
+      const pos = subPos(i, cx, cy, R), fx = pos.x + Math.sin(s.phase) * 7, fy = pos.y + Math.cos(s.phase * 0.8) * 7;
+      if (s.activity > 0.04) { ctx.strokeStyle = `hsla(${s.hue},75%,58%,${s.activity * 0.4})`; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(fx, fy); ctx.stroke(); }
+      drawOrb(subPts, fx, fy, pos.r * (1 + s.activity * 0.28), s.hue, s.activity, a * 1.5 + i);
+      ctx.globalAlpha = 0.28 + s.activity * 0.6; ctx.fillStyle = `hsl(${s.hue},65%,72%)`;
+      ctx.font = "10px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.fillText(s.label, fx, fy + pos.r + 15); ctx.globalAlpha = 1;
+    });
+    particles = particles.filter(p => {
+      p.t += 0.022; if (p.t >= 1) { subs[p.to].activity = Math.min(1, subs[p.to].activity + 0.9); return false; }
+      if (p.t < 0) return true;
+      const pos = subPos(p.to, cx, cy, R), mx = (cx + pos.x) / 2, my = (cy + pos.y) / 2 - 42, t = p.t;
+      const x = (1 - t) * (1 - t) * cx + 2 * (1 - t) * t * mx + t * t * pos.x;
+      const y = (1 - t) * (1 - t) * cy + 2 * (1 - t) * t * my + t * t * pos.y;
+      ctx.fillStyle = `hsl(${subs[p.to].hue},85%,62%)`; ctx.globalAlpha = 1 - Math.abs(t - 0.5);
+      ctx.beginPath(); ctx.arc(x, y, 2.4, 0, 6.2832); ctx.fill(); ctx.globalAlpha = 1; return true;
+    });
+    const pulse = 1 + speaking * 0.15 + Math.sin(a * 3) * 0.014;
+    drawOrb(mainPts, cx + Math.sin(a * 0.7) * 5, cy + Math.cos(a * 0.9) * 5, R * pulse, 184, 0.52 + speaking * 0.48, a);
   })();
+  return {
+    speak() { speaking = 1; }, think() { thinking = 1; },
+    dispatch(key) { const i = subs.findIndex(s => s.key === key); if (i < 0) return; thinking = 1; for (let k = 0; k < 4; k++) particles.push({ to: i, t: -k * 0.10 }); },
+    activeCount() { return subs.filter(s => s.activity > 0.12).length; },
+  };
 }
 
 /* ── starfield ────────────────────────────────────────────────────────── */
