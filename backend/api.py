@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr, Field
 
 from security.auth_ratelimit import AuthRateLimiter, client_ip
@@ -22,6 +23,7 @@ from security.bearer_auth import extract_bearer
 from .crypto import TokenCipher
 from .db import DB, open_db
 from .models import User
+from .oauth import PROVIDERS, OAuthBroker, OAuthError
 from .repo import EmailTaken, RunRepo, SessionRepo, TokenRepo, UserRepo
 
 
@@ -48,6 +50,7 @@ def create_app(
     db: DB | None = None,
     cipher: TokenCipher | None = None,
     rate_limiter: AuthRateLimiter | None = None,
+    broker: OAuthBroker | None = None,
 ) -> FastAPI:
     db = db or open_db()
     cipher = cipher or TokenCipher()
@@ -56,6 +59,7 @@ def create_app(
     sessions = SessionRepo(db)
     tokens = TokenRepo(db, cipher)
     runs = RunRepo(db)
+    broker = broker or OAuthBroker(tokens)
 
     app = FastAPI(title="Donald Backend", version="0.1.0")
 
@@ -143,6 +147,33 @@ def create_app(
         if not tokens.delete(user.id, provider):
             raise HTTPException(status_code=404, detail="not connected")
         return {"ok": True}
+
+    # ── OAuth broker (M4): connect providers per user ────────────────────────
+    @app.get("/oauth/providers")
+    def oauth_providers(user: User = Depends(current_user)) -> dict:
+        connected = set(tokens.providers(user.id))
+        return {"providers": [
+            {"name": name, "configured": broker.is_configured(name),
+             "connected": name in connected}
+            for name in PROVIDERS
+        ]}
+
+    @app.get("/oauth/{provider}/authorize")
+    def oauth_authorize(provider: str, user: User = Depends(current_user)) -> dict:
+        try:
+            return {"authorize_url": broker.authorize_url(user.id, provider)}
+        except OAuthError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.get("/oauth/{provider}/callback")
+    def oauth_callback(provider: str, code: str = "", state: str = ""):
+        # No bearer here — the signed state proves the user. On success, bounce
+        # back to the app.
+        try:
+            broker.handle_callback(provider, code, state)
+        except OAuthError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        return RedirectResponse(url="/app/?connected=" + provider, status_code=303)
 
     # ── run history ───────────────────────────────────────────────────────────
     @app.get("/runs")

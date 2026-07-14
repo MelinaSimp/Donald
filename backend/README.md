@@ -87,6 +87,25 @@ that implements the `Embedder` protocol — nothing else changes. Fact extractio
 is currently a first-person heuristic; the model-backed extractor + episodic
 summarizer (running off a queue) are the planned upgrades.
 
+## OAuth broker (M4)
+
+One flow connects any provider for any user (`oauth.py`). Providers (Google,
+GitHub, Slack; extend `PROVIDERS`) share the same connect → callback → refresh
+path; per-provider client credentials come from env, and a provider with none set
+is simply "not connectable" until configured.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/oauth/providers` | Per provider: `configured` (creds set) + `connected` (this user) |
+| GET | `/oauth/{provider}/authorize` | Returns the provider consent URL to open |
+| GET | `/oauth/{provider}/callback` | Exchanges the code, stores encrypted tokens, redirects to `/app` |
+
+The `state` parameter is HMAC-signed and carries the user_id, so the callback
+(which has no bearer header) still knows — and can prove — who it's for; a forged
+or cross-user state fails verification (CSRF defense). `OAuthBroker.valid_token()`
+transparently refreshes an expired access token when a refresh token is present.
+Tokens are stored through `TokenRepo`, so they're Fernet-encrypted at rest.
+
 ## Next (not yet here)
 
 - Wire `RunRepo` into the gateway's agent loop so runs are recorded per user.
