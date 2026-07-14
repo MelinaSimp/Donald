@@ -173,7 +173,18 @@ async function loadMemory() {
 
 /* ── voice (browser speech; server Deepgram/ElevenLabs is the HQ path) ─── */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let recog = null, listening = false, speakNext = false;
+let recog = null, listening = false, speakNext = false, voicePlayed = false;
+
+// Play Donald's real ElevenLabs voice (MP3 the server streams as a `voice` event).
+function playVoice(b64, mime) {
+  try {
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const url = URL.createObjectURL(new Blob([bytes], { type: mime || "audio/mpeg" }));
+    const audio = new Audio(url);
+    audio.onended = () => URL.revokeObjectURL(url);
+    audio.play().catch(() => { /* autoplay may need a prior gesture; harmless */ });
+  } catch (_) { /* ignore malformed audio */ }
+}
 function toggleVoice() {
   if (!SR) return toast("Voice input isn't supported in this browser.");
   if (listening) { recog.stop(); return; }
@@ -283,12 +294,20 @@ function handleEvent(e) {
   } else if (e.type === "final") {
     if (!streamEl && e.text) h.push({ kind: "donald", text: e.text });
     streamEl = null; awaiting = null;
+  } else if (e.type === "voice") {
+    playVoice(e.audio_b64, e.mime);   // Donald's real ElevenLabs voice
+    voicePlayed = true;
+    if (ORB) ORB.speak();
   } else if (e.type === "error") {
     h.push({ kind: "error", text: friendlyError(e.text) }); streamEl = null; awaiting = null;
   }
   if (target === persona) renderMessages();
   if (e.type === "final" || e.type === "error") { loadRuns(); loadMemory(); }
-  if (e.type === "final" && speakNext) { speak(e.text); speakNext = false; }
+  // Only fall back to the browser voice if the server didn't send ElevenLabs audio.
+  if (e.type === "final") {
+    if (speakNext && !voicePlayed) speak(e.text);
+    speakNext = false; voicePlayed = false;
+  }
 }
 function friendlyError(text) {
   const t = String(text || "");
