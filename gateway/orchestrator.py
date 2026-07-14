@@ -33,6 +33,8 @@ from security.log_redact import redact
 from .config import Settings
 from .connectors.base import AgentConnector
 from .connectors.voice import ElevenLabsVoice
+from .grounding import grounding_for_turn
+from .grounding.citation_validator import CitationContextProvider
 
 log = logging.getLogger("donald.gateway")
 
@@ -94,6 +96,7 @@ class DonaldOrchestrator:
         personality_text: Optional[str] = None,
         confirm_cb: Optional[ConfirmCallback] = None,
         max_tool_rounds: int = 6,
+        grounding_provider: Optional[CitationContextProvider] = None,
     ) -> None:
         self.llm = llm
         self.hermes = hermes
@@ -102,6 +105,10 @@ class DonaldOrchestrator:
         self.personality = personality_text or load_personality()
         self.confirm_cb = confirm_cb
         self.max_tool_rounds = max_tool_rounds
+        # Optional citation backing store. None → trace-only grounding. Pass a
+        # VaultCitationContextProvider to verify [v1] citations against real
+        # ingested documents (quote/page checks).
+        self.grounding_provider = grounding_provider
 
     # -- public API ---------------------------------------------------------
     async def run_events(
@@ -111,6 +118,10 @@ class DonaldOrchestrator:
         session.conv.add_user_message(user_text)
 
         final_text = ""
+        # Grounding trace: one entry per tool call this turn. Feeds the
+        # citation guardrail so the final event can report how grounded the
+        # answer is (north-star: "never answer without a citation").
+        trace: List[Dict[str, Any]] = []
         for round_no in range(self.max_tool_rounds):
             response = await self._call_llm(session)
             blocks = _blocks_to_dicts(response.content)
@@ -133,7 +144,7 @@ class DonaldOrchestrator:
             session.conv.add_assistant_message(blocks)
             tool_results: List[Dict[str, Any]] = []
             for tu in tool_uses:
-                async for ev in self._run_tool(tu, tool_results):
+                async for ev in self._run_tool(tu, tool_results, trace):
                     yield ev
             session.conv.add_user_message(tool_results)
         else:
@@ -151,7 +162,15 @@ class DonaldOrchestrator:
             async for ev in self._speak(final_text):
                 yield ev
 
-        yield {"type": "final", "text": final_text}
+        # Grounding annotation: score the answer against the turn's tool trace.
+        # Trace-only (no provider) — safe, dependency-free, and additive. As
+        # Donald gains retrieval tools / a citation-emitting brain, this lights
+        # up without further wiring.
+        yield {
+            "type": "final",
+            "text": final_text,
+            "grounding": grounding_for_turn(final_text, trace, self.grounding_provider),
+        }
 
     async def run(self, session: Session, user_text: str) -> Reply:
         """Drain ``run_events`` into a single reply (non-streaming callers)."""
@@ -178,13 +197,32 @@ class DonaldOrchestrator:
         )
 
     async def _run_tool(
-        self, tool_use: Dict[str, Any], sink: List[Dict[str, Any]]
+        self,
+        tool_use: Dict[str, Any],
+        sink: List[Dict[str, Any]],
+        trace: Optional[List[Dict[str, Any]]] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
-        """Execute one Hermes delegation, appending a tool_result to ``sink``."""
+        """Execute one Hermes delegation, appending a tool_result to ``sink``.
+
+        Also appends a grounding-trace entry (``step_name``/``status``/``output``)
+        to ``trace`` when provided, so the citation guardrail can score the turn.
+        """
         tool_id = tool_use.get("id", "")
+        tool_name = tool_use.get("name", "hermes_execute")
         tool_input = tool_use.get("input") or {}
         task = str(tool_input.get("task", "")).strip()
         reason = str(tool_input.get("reason", "")).strip()
+
+        def _trace(status: str, output: Optional[Dict[str, Any]] = None) -> None:
+            if trace is not None:
+                trace.append(
+                    {
+                        "step_id": tool_id,
+                        "step_name": f"agent → {tool_name}",
+                        "status": status,
+                        "output": output,
+                    }
+                )
 
         yield {"type": "tool_call", "name": "hermes", "task": task, "reason": reason}
 
@@ -194,6 +232,7 @@ class DonaldOrchestrator:
             if not approved:
                 msg = "User declined this action. Do not retry it."
                 sink.append(_tool_result_block(tool_id, msg, is_error=True))
+                _trace("declined")
                 yield {"type": "tool_result", "name": "hermes", "declined": True}
                 return
 
@@ -201,6 +240,7 @@ class DonaldOrchestrator:
             sink.append(
                 _tool_result_block(tool_id, "No task provided.", is_error=True)
             )
+            _trace("error")
             yield {"type": "tool_result", "name": "hermes", "error": "empty task"}
             return
 
@@ -210,12 +250,16 @@ class DonaldOrchestrator:
         if not result.ok:
             err = result.error or "Hermes failed."
             sink.append(_tool_result_block(tool_id, f"Hermes error: {err}", is_error=True))
+            _trace("error")
             yield {"type": "tool_result", "name": "hermes", "error": redact(err, 300)}
             return
 
         # Hermes output is untrusted: gate it, then hand the model the envelope.
         gated = gate(result.text, source="hermes")
         sink.append(_tool_result_block(tool_id, gated.to_prompt()))
+        # Record the raw result for grounding. If a future tool emits
+        # citations, they live under output.result and resolve automatically.
+        _trace("success", {"result": result.raw or {"text": result.text}})
         yield {
             "type": "tool_result",
             "name": "hermes",
