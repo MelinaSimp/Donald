@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0d12" />
+  <title>Donald</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <!-- Auth -->
+  <main id="auth" class="auth hidden">
+    <div class="card">
+      <h1 class="brand">Donald</h1>
+      <p class="tagline">Your personal AI team. It remembers.</p>
+      <div class="tabs">
+        <button id="tab-login" class="tab active">Log in</button>
+        <button id="tab-signup" class="tab">Sign up</button>
+      </div>
+      <form id="auth-form" autocomplete="on">
+        <label>Email<input id="f-email" type="email" required /></label>
+        <label>Password<input id="f-password" type="password" minlength="8" required /></label>
+        <div class="signup-only hidden">
+          <label>Display name<input id="f-name" type="text" /></label>
+          <label>Country<input id="f-country" type="text" maxlength="2" placeholder="US" /></label>
+          <label>Date of birth<input id="f-dob" type="date" /></label>
+          <label class="check"><input id="f-tos" type="checkbox" /> I accept the Terms of Service</label>
+        </div>
+        <button id="auth-submit" class="primary" type="submit">Log in</button>
+        <p id="auth-error" class="error hidden"></p>
+      </form>
+    </div>
+  </main>
+
+  <!-- App -->
+  <div id="app" class="app hidden">
+    <aside class="sidebar">
+      <div class="side-head"><span class="brand small">Donald</span></div>
+      <section class="side-section">
+        <h2>Integrations</h2>
+        <ul id="integrations" class="integrations"><li class="muted">Loading…</li></ul>
+        <p class="hint">OAuth connect flow arrives in M4.</p>
+      </section>
+      <div class="side-foot">
+        <span id="who" class="who muted"></span>
+        <button id="logout" class="link">Log out</button>
+      </div>
+    </aside>
+    <main class="chat">
+      <header class="chat-head"><h2>Chat</h2><span id="conn" class="conn"></span></header>
+      <div id="messages" class="messages"></div>
+      <form id="chat-form" class="composer">
+        <input id="chat-input" type="text" placeholder="Message Donald…" autocomplete="off" />
+        <button class="primary" type="submit">Send</button>
+      </form>
+    </main>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

@@ -14,6 +14,7 @@ pyyaml>=6.0
 httpx>=0.27       # Hermes (OpenAI-compatible) + ElevenLabs HTTP clients
 fastapi>=0.110    # REST + WebSocket server the UI talks to (gateway + backend)
 uvicorn>=0.29     # ASGI server
+websockets>=12    # WebSocket support for the gateway /ws chat stream
 cryptography>=41  # backend: Fernet at-rest encryption of integration tokens
 email-validator>=2.0  # backend: signup email validation (FastAPI EmailStr)
 # psycopg[binary]>=3.1  # backend: only needed when DATABASE_URL is Postgres

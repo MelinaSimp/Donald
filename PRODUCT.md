@@ -36,7 +36,9 @@ The product is built from four modules. Everything else has been moved to
 | `orchestrator/` | Routing + the six-tier framework: smart dispatch, least-privilege tool scoping, failure isolation, confirmation gates, handoffs, hot-reload. |
 | `gateway/` | The model-agnostic HTTP/WebSocket server — one endpoint the UI talks to; streams agent events; swappable model connectors (Anthropic, OpenAI-compatible, voice). |
 | `backend/` | **M1** product API — accounts, auth (bearer sessions), per-user **encrypted** integration tokens, run history — plus the **M2** memory engine (`memory.py`, `embeddings.py`): per-user 3-tier semantic memory. Multi-tenant by construction; SQLite for dev/tests, Postgres in prod. See [`backend/README.md`](./backend/README.md). |
-| `web/` | Next.js UI — the seed for the marketing site and the desktop shell's renderer. |
+| `webui/` | The **web shell** — a static, build-free chat client (login → per-user streaming chat → integrations) served by `serve.py` at `/app`. The runnable UI a desktop (Tauri) shell will later wrap. |
+| `serve.py` | The combined server: backend API + authed gateway + web shell in one process. |
+| `web/` | Next.js UI — an alternate/marketing seed. |
 
 Supporting: `security/` (auth, redaction, injection gate, audit), `config.yaml`,
 `requirements*.txt`, `tests/`.
@@ -83,10 +85,11 @@ Agent depth ≈ 80%. Product shell: **M0** (consolidation) + agent-core
 reconciliation done; **M1** landed — multi-tenant accounts, bearer auth, encrypted
 per-user integration tokens, and an authenticated gateway that scopes and records
 each chat per user; **M2** landed — per-user 3-tier semantic memory injected into
-each turn. Both verified on SQLite and live Postgres. Still ahead: the desktop
-shell (M3), the OAuth broker (M4), billing (M5), and signing (M6) — plus two M2
-upgrades (a real embedding provider and a background summarizer). The roadmap
-sequences the rest across M0–M7.
+each turn. Both verified on SQLite and live Postgres. A **web shell** (`webui/`,
+served by `serve.py`) now makes it usable end to end — signup/login → per-user
+streaming chat → integrations — verified in a real browser. Still ahead: wrapping
+that shell in a Tauri desktop app with auto-update (the rest of M3), the OAuth
+broker (M4), billing (M5), and signing (M6). The roadmap sequences M0–M7.
 
 ## Integration strategy
 

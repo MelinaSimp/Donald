@@ -17,6 +17,27 @@ Routes:
 
 from __future__ import annotations
 
+import pathlib
+
+_WEBUI = pathlib.Path(__file__).parent / "webui"
+
+
+def mount_webui(app):
+    """Serve the static web shell at /app and redirect / -> /app/.
+
+    Kept separate from create_app so it can be tested without building the
+    orchestrator (which needs model/connector config).
+    """
+    from fastapi.responses import RedirectResponse
+    from fastapi.staticfiles import StaticFiles
+
+    @app.get("/")
+    def _root():
+        return RedirectResponse("/app/")
+
+    app.mount("/app", StaticFiles(directory=str(_WEBUI), html=True), name="webui")
+    return app
+
 
 def create_app():
     from backend.api import create_app as create_backend_app
@@ -34,6 +55,7 @@ def create_app():
     add_gateway_routes(
         app, orch, settings, auth=GatewayAuth(db), memory=MemoryService(db)
     )
+    mount_webui(app)
     return app
 
 
