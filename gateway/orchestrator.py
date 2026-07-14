@@ -34,6 +34,7 @@ from .config import Settings
 from .connectors.base import AgentConnector
 from .connectors.voice import ElevenLabsVoice
 from .grounding import grounding_for_turn
+from .grounding.citation_validator import CitationContextProvider
 
 log = logging.getLogger("donald.gateway")
 
@@ -95,6 +96,7 @@ class DonaldOrchestrator:
         personality_text: Optional[str] = None,
         confirm_cb: Optional[ConfirmCallback] = None,
         max_tool_rounds: int = 6,
+        grounding_provider: Optional[CitationContextProvider] = None,
     ) -> None:
         self.llm = llm
         self.hermes = hermes
@@ -103,6 +105,10 @@ class DonaldOrchestrator:
         self.personality = personality_text or load_personality()
         self.confirm_cb = confirm_cb
         self.max_tool_rounds = max_tool_rounds
+        # Optional citation backing store. None → trace-only grounding. Pass a
+        # VaultCitationContextProvider to verify [v1] citations against real
+        # ingested documents (quote/page checks).
+        self.grounding_provider = grounding_provider
 
     # -- public API ---------------------------------------------------------
     async def run_events(
@@ -163,7 +169,7 @@ class DonaldOrchestrator:
         yield {
             "type": "final",
             "text": final_text,
-            "grounding": grounding_for_turn(final_text, trace),
+            "grounding": grounding_for_turn(final_text, trace, self.grounding_provider),
         }
 
     async def run(self, session: Session, user_text: str) -> Reply:

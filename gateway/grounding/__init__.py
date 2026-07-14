@@ -52,6 +52,14 @@ from .grounding import (
     compute_grounding_score,
 )
 from .source_tiers import TAGS, SourceTag, SourceTier, format_tier_guidance
+from .vault import (
+    ChunkWithProvenance,
+    Vault,
+    VaultCitationContextProvider,
+    VaultDocument,
+    chunk_text_with_pages,
+    normalize_page_text,
+)
 
 __all__ = [
     # source tiers
@@ -85,6 +93,13 @@ __all__ = [
     "GroundingTier",
     "RETRIEVAL_TOOLS",
     "compute_grounding_score",
+    # vault
+    "Vault",
+    "VaultDocument",
+    "VaultCitationContextProvider",
+    "ChunkWithProvenance",
+    "chunk_text_with_pages",
+    "normalize_page_text",
     # convenience
     "grounding_for_turn",
 ]

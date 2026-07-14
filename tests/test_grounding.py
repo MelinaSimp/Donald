@@ -11,9 +11,12 @@ from __future__ import annotations
 
 from gateway.grounding import (
     MemoryRow,
+    Vault,
     VaultChunk,
+    VaultCitationContextProvider,
     VaultDoc,
     build_citation_map,
+    chunk_text_with_pages,
     compute_grounding_score,
     format_tier_guidance,
     grounding_for_turn,
@@ -453,6 +456,103 @@ def test_format_tier_guidance():
     assert "TIER 2" in text
     assert "TIER 3" in text
     assert "Census" in text
+
+
+# ── Vault + VaultCitationContextProvider ─────────────────────────────
+
+def _vault_cite_trace(quote, page, document_id="lease-1"):
+    return [
+        trace_entry(
+            "agent → vault_cite",
+            {"result": {"citations": [{"marker": "[v1]", "quote": quote, "source": "Lease", "page": page, "document_id": document_id}]}},
+        )
+    ]
+
+
+def test_chunk_text_with_pages_provenance():
+    chunks = chunk_text_with_pages(["hello world foo", "second page text"])
+    assert len(chunks) == 1  # small input → single chunk on the first page
+    assert chunks[0].page_number == 1
+    assert chunks[0].line_start == 1
+    assert "hello world foo" in chunks[0].content
+
+
+def test_chunk_text_with_pages_empty():
+    assert chunk_text_with_pages([]) == []
+    assert chunk_text_with_pages(["", "   "]) == []
+
+
+def test_vault_ingest_and_get_in_memory():
+    v = Vault()
+    doc = v.ingest("lease-1", "Lease", ["The base rent is 5% of gross sales, escalating annually."])
+    assert v.get("lease-1") is not None
+    assert doc.page_count == 1
+    assert v.document_ids() == ["lease-1"]
+    assert v.get("nope") is None
+
+
+def test_vault_provider_verifies_quote_strong():
+    v = Vault()
+    v.ingest("lease-1", "Lease", ["The base rent is 5% of gross sales, escalating annually."])
+    provider = VaultCitationContextProvider(v)
+    r = validate_citations("Rent is capped [v1].", _vault_cite_trace("base rent is 5% of gross sales", page=1), provider)
+    assert r.overall == "valid"
+    assert r.checks[0].status == "valid"
+    assert r.checks[0].level == "strong"
+
+
+def test_vault_provider_provenance_when_quote_not_found():
+    v = Vault()
+    v.ingest("lease-1", "Lease", ["Entirely unrelated content about parking."])
+    provider = VaultCitationContextProvider(v)
+    r = validate_citations("Rent [v1].", _vault_cite_trace("base rent is 5%", page=1), provider)
+    assert r.checks[0].status == "valid"
+    assert r.checks[0].level == "provenance"
+
+
+def test_vault_provider_doc_missing_for_unknown_document():
+    provider = VaultCitationContextProvider(Vault())
+    r = validate_citations("Rent [v1].", _vault_cite_trace("anything", page=1, document_id="ghost"), provider)
+    assert r.checks[0].status == "doc_missing"
+
+
+def test_vault_provider_page_out_of_bounds():
+    v = Vault()
+    v.ingest("lease-1", "Lease", ["Single page lease document."])  # page_count == 1
+    provider = VaultCitationContextProvider(v)
+    r = validate_citations("Rent [v1].", _vault_cite_trace("Single page", page=99), provider)
+    assert r.checks[0].status == "page_mismatch"
+
+
+def test_vault_file_backed_roundtrip(tmp_path):
+    root = tmp_path / "vault"
+    v1 = Vault(root=root)
+    v1.ingest("lease-1", "Lease", ["The base rent is 5% of gross sales."])
+    # A fresh Vault over the same directory sees the persisted document.
+    v2 = Vault(root=root)
+    assert v2.document_ids() == ["lease-1"]
+    provider = VaultCitationContextProvider(v2)
+    r = validate_citations("Rent [v1].", _vault_cite_trace("base rent is 5%", page=1), provider)
+    assert r.checks[0].status == "valid"
+
+
+def test_grounding_for_turn_with_vault_provider_is_strong():
+    v = Vault()
+    v.ingest("lease-1", "Lease", ["The base rent is 5% of gross sales, escalating 3% annually."])
+    provider = VaultCitationContextProvider(v)
+    out = grounding_for_turn(
+        "Per the lease [v1], base rent is 5%.",
+        [
+            trace_entry(
+                "agent → vault_cite",
+                {"result": {"citations": [{"marker": "[v1]", "quote": "base rent is 5% of gross sales", "source": "Lease", "page": 1, "document_id": "lease-1"}]}},
+                status="success",
+            )
+        ],
+        provider,
+    )
+    assert out["citations"]["overall"] == "valid"
+    assert out["tier"] == "strong"
 
 
 # ── grounding_for_turn (integration convenience) ─────────────────────

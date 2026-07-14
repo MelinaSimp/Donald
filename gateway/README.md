@@ -128,9 +128,25 @@ against the turn's tool trace and validates any inline citation markers
 A fabricated citation (marker with no backing tool call) is flagged `missing`
 and drags the verdict to `invalid` — so the UI can surface "not verified"
 instead of trusting an unsourced answer. The check is trace-only by default
-(dependency-free); back it with a `CitationContextProvider` (e.g. Donald's
-Vault) to verify quotes and pages against real documents. See
-`gateway/grounding/`.
+(dependency-free). See `gateway/grounding/`.
+
+**Verifying against real documents (the Vault).** Pass a
+`grounding_provider` to `DonaldOrchestrator` to move from trace-only to real
+document verification. `gateway/grounding/vault.py` ships a minimal, file-backed
+`Vault` (a client-owned document sandbox with page-aware chunking) and a
+`VaultCitationContextProvider` that adapts it to the validator:
+
+```python
+from gateway.grounding import Vault, VaultCitationContextProvider
+
+vault = Vault(root="./vault-data")          # or Vault() for in-memory
+vault.ingest("lease-1", "Lease", pages)     # pages: list[str], one per page
+orch = DonaldOrchestrator(..., grounding_provider=VaultCitationContextProvider(vault))
+```
+
+Now `[v1]` citations are checked for quote match and page bounds against the
+ingested document — surfacing `strong` / `confirmed` / `provenance` /
+`page_mismatch` / `doc_missing` per citation.
 
 **Ad-hoc speech:** `POST /api/voice {"text": "..."}` → `audio/mpeg`.
 
