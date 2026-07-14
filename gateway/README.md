@@ -105,8 +105,32 @@ POST /api/chat   {"session_id": "abc", "message": "what's in my downloads folder
 | `tool_call` | Donald is delegating to Hermes (`task`, `reason`) |
 | `tool_result` | Hermes came back (`flagged`, `flag_reasons`, `preview`) |
 | `voice` | base64 MP3 of Donald's reply (`audio_b64`, `mime`) |
-| `final` | the finished reply text |
+| `final` | the finished reply text, plus a `grounding` annotation (see below) |
 | `error` | something went wrong |
+
+### Grounding annotation on `final`
+
+Every `final` event carries a `grounding` object — the anti-hallucination
+guardrail (north-star: *"never answer without a citation"*). It scores the reply
+against the turn's tool trace and validates any inline citation markers
+(`[v1]`, `[mem:…]`, `[reg:N]`, `[ss:N]`):
+
+```jsonc
+"grounding": {
+  "score": 0.4,                // 0..1 composite
+  "tier": "partial",           // "strong" | "partial" | "none"
+  "summary": "Partially grounded — some claims uncited or unverified.",
+  "parts": { "citation_count": 1, "retrieval_tools_called": 0, ... },
+  "citations": { "overall": "invalid", "counts": {...}, "checks": [...] }
+}
+```
+
+A fabricated citation (marker with no backing tool call) is flagged `missing`
+and drags the verdict to `invalid` — so the UI can surface "not verified"
+instead of trusting an unsourced answer. The check is trace-only by default
+(dependency-free); back it with a `CitationContextProvider` (e.g. Donald's
+Vault) to verify quotes and pages against real documents. See
+`gateway/grounding/`.
 
 **Ad-hoc speech:** `POST /api/voice {"text": "..."}` → `audio/mpeg`.
 
@@ -129,8 +153,9 @@ POST /api/chat   {"session_id": "abc", "message": "what's in my downloads folder
 | `connectors/base.py` | `AgentConnector` protocol — the adapter seam |
 | `connectors/hermes.py` | Hermes OpenAI-compatible connector |
 | `connectors/voice.py` | ElevenLabs TTS connector |
-| `orchestrator.py` | Donald's turn loop: brain + Hermes-as-tool + security gates + voice |
+| `orchestrator.py` | Donald's turn loop: brain + Hermes-as-tool + security gates + voice + grounding |
 | `server.py` | FastAPI REST + WebSocket the UI talks to |
+| `grounding/` | Citation grounding guardrail (ported from Drift's `lib/dante`): parse + verify citation markers, score how grounded each answer is |
 
 ## Swapping Hermes out
 
