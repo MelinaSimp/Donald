@@ -23,6 +23,7 @@ The HTTP client is injectable so tests never hit the network.
 from __future__ import annotations
 
 import json
+import os
 import re
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
@@ -74,6 +75,14 @@ class OpenAICompatBrain:
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
+        # OpenRouter uses these (optional) for app attribution / leaderboards.
+        # Harmless with any other provider.
+        referer = os.getenv("OPENROUTER_REFERER")
+        title = os.getenv("OPENROUTER_TITLE")
+        if referer:
+            headers["HTTP-Referer"] = referer
+        if title:
+            headers["X-Title"] = title
         return headers
 
     async def _create(self, **kwargs) -> SimpleNamespace:

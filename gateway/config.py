@@ -116,7 +116,7 @@ def load_settings() -> Settings:
         # Generic key for the openai-compatible provider (falls back to OPENAI_API_KEY).
         donald_api_key=os.environ.get("DONALD_API_KEY") or os.environ.get("OPENAI_API_KEY"),
         donald_model=os.environ.get("DONALD_MODEL", "claude-opus-4-8"),
-        donald_max_tokens=_env_int("DONALD_MAX_TOKENS", 1024),
+        donald_max_tokens=_env_int("DONALD_MAX_TOKENS", 4096),
         donald_temperature=float(os.environ.get("DONALD_TEMPERATURE", "0.8")),
         hermes_mode=os.environ.get("HERMES_MODE", "http").strip().lower(),
         # Hermes defaults match its API server: 127.0.0.1:8642, OpenAI-compatible.

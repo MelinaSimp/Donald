@@ -1,0 +1,10 @@
+# Lean deps for the deployed server (serve:create_app) — no desktop/computer-
+# control/browser packages. See requirements.txt for the full dev set.
+fastapi>=0.110
+uvicorn[standard]>=0.29     # includes websockets for /ws
+httpx>=0.27
+cryptography>=41            # Fernet token encryption
+email-validator>=2.0        # signup email validation
+anthropic>=0.70             # only used when DONALD_PROVIDER=anthropic
+python-dotenv>=1.0
+psycopg[binary]>=3.1        # Postgres driver (DATABASE_URL)

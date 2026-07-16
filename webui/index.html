@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0b0e" />
+  <title>Donald OS</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <canvas id="starfield"></canvas>
+
+  <!-- Auth -->
+  <main id="auth" class="auth hidden">
+    <div class="card">
+      <div class="wordmark">DONALD_OS<span class="tm">™</span></div>
+      <p class="tagline">Your personal AI team. It remembers.</p>
+      <div class="tabs">
+        <button id="tab-login" class="tab active">Log in</button>
+        <button id="tab-signup" class="tab">Sign up</button>
+      </div>
+      <form id="auth-form" autocomplete="on">
+        <label>Email<input id="f-email" type="email" required /></label>
+        <label>Password<input id="f-password" type="password" minlength="8" required /></label>
+        <div class="signup-only hidden">
+          <label>Display name<input id="f-name" type="text" /></label>
+          <div class="row">
+            <label>Country<input id="f-country" type="text" maxlength="2" placeholder="US" /></label>
+            <label>Date of birth<input id="f-dob" type="date" /></label>
+          </div>
+          <label class="check"><input id="f-tos" type="checkbox" /> I accept the Terms of Service</label>
+        </div>
+        <button id="auth-submit" class="primary" type="submit">Log in</button>
+        <p id="auth-error" class="error hidden"></p>
+      </form>
+    </div>
+  </main>
+
+  <!-- App -->
+  <div id="app" class="os hidden">
+    <!-- top bar -->
+    <header class="topbar">
+      <div class="lights"><i class="r"></i><i></i><i></i></div>
+      <div class="brand">DONALD_OS<span class="tm">™</span><span class="devpill">DEV ▾</span></div>
+      <button id="voice" class="voicepill"><span class="mic"></span> VOICE</button>
+      <div class="topright">
+        <button id="plan" class="planpill hidden"></button>
+        <span class="statuspill">CALM</span>
+        <span id="clock" class="clock">—</span>
+      </div>
+    </header>
+
+    <!-- body -->
+    <div class="body">
+      <!-- left rail -->
+      <aside class="rail">
+        <div class="panel stats">
+          <div class="stat"><span class="dot on"></span> Active <b id="stat-active">0</b></div>
+          <div class="stat"><span class="dot done"></span> Done <b id="stat-done">0</b></div>
+          <div class="idle" id="idle-note">All companions idle</div>
+        </div>
+
+        <div class="panel calendar">
+          <div class="cal-head"><button id="cal-prev">‹</button><span id="cal-title">—</span><button id="cal-next">›</button></div>
+          <div class="cal-grid" id="cal-grid"></div>
+        </div>
+
+        <div class="panel agenda">
+          <div class="agenda-head">TODAY</div>
+          <ul id="agenda" class="agenda-list"><li class="muted">No activity yet</li></ul>
+        </div>
+
+        <div class="panel memory">
+          <div class="agenda-head"><span class="brain">◈</span> WHAT DONALD REMEMBERS</div>
+          <ul id="memory" class="mem-list"><li class="muted">Tell Donald something about you →</li></ul>
+        </div>
+
+        <div class="panel integrations">
+          <div class="agenda-head">INTEGRATIONS</div>
+          <ul id="integrations" class="int-list"><li class="muted">Loading…</li></ul>
+        </div>
+      </aside>
+
+      <!-- center stage -->
+      <main class="stage">
+        <canvas id="orb"></canvas>
+        <div class="stage-label">DONALD</div>
+        <div class="carousel">
+          <button class="carrow" id="orb-prev">‹</button>
+          <span class="pager"><i class="on"></i><i></i><i></i><i></i></span>
+          <button class="carrow" id="orb-next">›</button>
+        </div>
+        <button class="knowledge">▾ KNOWLEDGE VIEW</button>
+      </main>
+
+      <!-- right column -->
+      <section class="rightcol">
+        <div class="panel docs">
+          <ul id="docs" class="doc-list"><li class="muted">No documents yet</li></ul>
+          <div class="doc-actions">
+            <button class="ghost" id="btn-upload">⬆ UPLOAD</button>
+            <button class="ghost" id="btn-insert">＋ INSERT</button>
+          </div>
+        </div>
+
+        <div class="panel chatpanel">
+          <nav class="ctabs" id="ctabs">
+            <button class="ctab active" data-persona="donald">DONALD</button>
+            <button class="ctab" data-persona="engineer">ENGINEER</button>
+            <button class="ctab" data-persona="finance">FINANCE</button>
+            <button class="ctab" data-persona="marketer">MARKETER</button>
+            <button class="ctab" data-persona="research">RESEARCH</button>
+          </nav>
+          <div id="messages" class="messages"></div>
+          <form id="chat-form" class="composer">
+            <span class="plus">＋</span>
+            <input id="chat-input" type="text" placeholder="Message Donald…" autocomplete="off" />
+            <button class="send" type="submit"><span id="conn-dot" class="conn-dot"></span></button>
+          </form>
+          <div class="disclaimer">AI-generated · responses may be inaccurate</div>
+        </div>
+      </section>
+    </div>
+
+    <button id="logout" class="logout">Log out</button>
+
+    <!-- confirmation gate for consequential actions -->
+    <div id="confirm-overlay" class="overlay hidden">
+      <div class="modal">
+        <h3>Confirm action</h3>
+        <p class="modal-sub">Donald won't do anything irreversible without a yes.</p>
+        <div id="issue-form">
+          <label>Repository<input id="issue-repo" type="text" placeholder="owner/name" /></label>
+          <label>Issue title<input id="issue-title" type="text" placeholder="Something to fix…" /></label>
+        </div>
+        <p id="confirm-preview" class="confirm-preview hidden"></p>
+        <p id="confirm-result" class="confirm-result hidden"></p>
+        <div class="modal-actions">
+          <button id="confirm-cancel" class="ghost">Cancel</button>
+          <button id="confirm-preview-btn" class="primary">Preview</button>
+          <button id="confirm-approve" class="primary hidden">Approve &amp; create</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

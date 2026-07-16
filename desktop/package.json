@@ -1,0 +1,15 @@
+{
+  "name": "donald-os-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Donald OS — Tauri desktop shell",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "icon": "tauri icon icons/source.png"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

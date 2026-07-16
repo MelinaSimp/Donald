@@ -8,12 +8,17 @@ Run with:  donald voice   (after `pip install -e ".[voice]"` and setting keys)
 
 from __future__ import annotations
 
-from ..conversation import Conversation
+# The optional graceful-degradation speaker/mic layer lives in the sibling
+# submodule; re-export it so `import donald.voice` exposes it directly.
+from .speaker import Speaker, listen_once, stt_available, tts_available
+
+__all__ = ["Speaker", "listen_once", "stt_available", "tts_available", "run_voice"]
 
 EXIT_PHRASES = {"goodbye", "stop listening", "go to sleep", "exit", "quit"}
 
 
 def run_voice(donald) -> None:
+    from ..conversation import Conversation
     from .audio import play_pcm, record_until_silence
     from .stt import DeepgramSTT
     from .tts import ElevenLabsTTS

@@ -19,3 +19,7 @@ env/
 **/.prism/preview/.next/
 **/.prism/preview/out/
 prism/registry.json
+
+# Local runtime data (sqlite db, workspace)
+donald_data/
+donald_workspace/

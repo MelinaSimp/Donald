@@ -74,6 +74,12 @@ class Session:
 
     session_id: str
     conv: ConversationManager = field(default_factory=ConversationManager)
+    # Per-turn memory context (profile facts + retrieved chunks) injected into
+    # the system prompt. Set by the caller before run(); empty = no memory.
+    memory_context: str = ""
+    # Per-user integration toolset (backend.agent_tools.IntegrationTools) the
+    # model may call alongside Hermes. None = Hermes-only.
+    tools: Any = None
 
 
 @dataclass
@@ -133,7 +139,7 @@ class DonaldOrchestrator:
             session.conv.add_assistant_message(blocks)
             tool_results: List[Dict[str, Any]] = []
             for tu in tool_uses:
-                async for ev in self._run_tool(tu, tool_results):
+                async for ev in self._run_tool(tu, tool_results, session):
                     yield ev
             session.conv.add_user_message(tool_results)
         else:
@@ -168,19 +174,31 @@ class DonaldOrchestrator:
         messages = session.conv.messages_for_api()
         append_voice_cue(messages)  # API-only; never stored
         system = build_system_prompt(self.personality)
+        if session.memory_context:
+            system = f"{system}\n\n{session.memory_context}"
+        tools = [HERMES_TOOL]
+        if session.tools is not None:
+            tools = tools + session.tools.schemas()
         return await self.llm.messages.create(
             model=self.settings.donald_model,
             system=system,
             messages=messages,
-            tools=[HERMES_TOOL],
+            tools=tools,
             max_tokens=self.settings.donald_max_tokens,
             temperature=self.settings.donald_temperature,
         )
 
     async def _run_tool(
-        self, tool_use: Dict[str, Any], sink: List[Dict[str, Any]]
+        self, tool_use: Dict[str, Any], sink: List[Dict[str, Any]], session: Session
     ) -> AsyncIterator[Dict[str, Any]]:
-        """Execute one Hermes delegation, appending a tool_result to ``sink``."""
+        """Dispatch one tool call. Integration tools (the user's connected
+        accounts) route to their toolset; everything else is a Hermes delegation."""
+        name = tool_use.get("name") or "hermes_execute"
+        if name != "hermes_execute" and session.tools is not None and session.tools.is_tool(name):
+            async for ev in self._run_integration_tool(tool_use, sink, session):
+                yield ev
+            return
+
         tool_id = tool_use.get("id", "")
         tool_input = tool_use.get("input") or {}
         task = str(tool_input.get("task", "")).strip()
@@ -223,6 +241,32 @@ class DonaldOrchestrator:
             "flag_reasons": gated.flag_reasons,
             "preview": redact(result.text, 400),
         }
+
+    async def _run_integration_tool(
+        self, tool_use: Dict[str, Any], sink: List[Dict[str, Any]], session: Session
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Run one of the user's connected-integration tools, gating writes."""
+        tools = session.tools
+        tool_id = tool_use.get("id", "")
+        name = tool_use.get("name", "")
+        tool_input = tool_use.get("input") or {}
+        yield {"type": "tool_call", "name": name, "input": tool_input}
+
+        # Consequential tools (write/send) stop for a human yes.
+        if tools.is_consequential(name) and self.confirm_cb is not None:
+            summary = tools.summarize(name, tool_input)
+            if not await self.confirm_cb(summary, f"{name} — writes to your account"):
+                sink.append(_tool_result_block(tool_id, "User declined this action. Do not retry it.", is_error=True))
+                yield {"type": "tool_result", "name": name, "declined": True}
+                return
+
+        result = tools.execute(name, tool_input)
+        # Provider output can carry external, attacker-controlled text (email
+        # bodies, issue text) — gate it like Hermes output before the model sees it.
+        gated = gate(result, source=name)
+        sink.append(_tool_result_block(tool_id, gated.to_prompt()))
+        yield {"type": "tool_result", "name": name, "flagged": gated.flagged,
+               "flag_reasons": gated.flag_reasons, "preview": redact(result, 400)}
 
     async def _speak(self, text: str) -> AsyncIterator[Dict[str, Any]]:
         import base64
